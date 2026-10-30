@@ -15,9 +15,13 @@
 </head>
 <body>
   <header class="topbar">
+    <button class="menu-btn" id="btn-menu" aria-label="Ver todos los temas" aria-controls="drawer" aria-expanded="false" title="Todos los temas">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      <span>Temas</span>
+    </button>
     <a class="brand" href="#inicio">
       <img src="icons/icon.svg" alt="" width="28" height="28">
-      <span>Libro de Pastoreo</span>
+      <span class="full">Libro de Pastoreo</span><span class="short">Pastoreo</span>
     </a>
     <div class="tools">
       <button id="btn-search" aria-label="Buscar" title="Buscar">
@@ -30,9 +34,23 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
       </button>
     </div>
+    <div class="progress" aria-hidden="true"><span id="progress"></span></div>
   </header>
 
+  <div class="backdrop" id="backdrop" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="Todos los temas">
+    <div class="drawer-head">
+      <span>Todos los temas</span>
+      <button id="drawer-close" aria-label="Cerrar la lista de temas" title="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <nav id="drawer-list"></nav>
+  </aside>
+
   <main id="app" tabindex="-1"></main>
+
+  <nav class="dock" id="dock" aria-label="Navegación entre temas" hidden></nav>
 
   <noscript><p style="padding:16px">Esta aplicación necesita JavaScript.</p></noscript>
   <script src="js/content.js"></script>

@@ -266,6 +266,7 @@
         <span class="card-body">
           <span class="card-title">${escapeHtml(t.title)}</span>
           <span class="card-meta">${t.id === 14 ? illustrationCount + " ilustraciones" : n + (n === 1 ? " texto" : " textos")}</span>
+          ${sectionsOf(t).length ? `<span class="card-sections">${sectionsOf(t).map((x) => escapeHtml(plain(x))).join(" · ")}</span>` : ""}
         </span>
         ${isFav(t.id) ? '<span class="card-star" aria-label="Favorito">★</span>' : ""}
       </a>`;
@@ -349,6 +350,7 @@
 
     app.innerHTML = `
       <article class="topic">
+        <a class="crumb" href="#inicio"><span aria-hidden="true">←</span> Todos los temas</a>
         <header class="topic-head">
           <span class="topic-num">${escapeHtml(t.num)}</span>
           <div>
@@ -376,7 +378,11 @@
       toggleFav(id);
       e.currentTarget.classList.toggle("on", isFav(id));
       e.currentTarget.setAttribute("aria-pressed", isFav(id));
+      renderDrawer(id);
     });
+
+    renderDock(t, prev, next);
+    watchSections();
 
     const q = params.q;
     if (q) markTerms(app.querySelector(".prose"), fold(q).split(/\s+/).filter((w) => w.length > 1));
@@ -391,6 +397,173 @@
       window.scrollTo(0, 0);
     }
   }
+
+  // ---------- Barra inferior, lista de temas y sección actual ----------
+
+  const dock = document.getElementById("dock");
+  const drawer = document.getElementById("drawer");
+  const drawerList = document.getElementById("drawer-list");
+  const backdrop = document.getElementById("backdrop");
+  const menuBtn = document.getElementById("btn-menu");
+  const progress = document.getElementById("progress");
+  const wide = matchMedia("(min-width: 1100px)");
+  const ICON = {
+    home: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5"/></svg>',
+    prev: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>',
+    next: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>',
+    up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7"/></svg>',
+  };
+
+  function renderDock(t, prev, next) {
+    const pos = mainTopics.indexOf(t) + 1;
+    dock.innerHTML = `
+      <a href="#inicio" class="dock-btn" aria-label="Volver a todos los temas" title="Todos los temas">${ICON.home}</a>
+      ${prev ? `<a href="#tema-${prev.id}" class="dock-btn" aria-label="Tema anterior: ${escapeHtml(prev.title)}" title="Anterior">${ICON.prev}</a>` : `<span class="dock-btn off">${ICON.prev}</span>`}
+      <button class="dock-mid" id="dock-menu" aria-label="Ver todos los temas">
+        <small>${t.id ? `Tema ${pos} de ${mainTopics.length}` : "Introducción"}</small>
+        <b>${escapeHtml(t.title)}</b>
+      </button>
+      ${next ? `<a href="#tema-${next.id}" class="dock-btn" aria-label="Tema siguiente: ${escapeHtml(next.title)}" title="Siguiente">${ICON.next}</a>` : `<span class="dock-btn off">${ICON.next}</span>`}
+      <button class="dock-btn" id="dock-up" aria-label="Subir al principio" title="Subir">${ICON.up}</button>`;
+    dock.hidden = false;
+    document.body.classList.add("reading");
+    document.getElementById("dock-menu").addEventListener("click", openDrawer);
+    document.getElementById("dock-up").addEventListener("click", () => window.scrollTo({ top: 0, behavior: smooth() }));
+  }
+
+  function renderDrawer(currentId) {
+    const item = (t) => {
+      const current = t.id === currentId;
+      const sections = current ? sectionsOf(t) : [];
+      return `
+        <a class="d-item${current ? " current" : ""}" href="#tema-${t.id}"${current ? ' aria-current="page"' : ""}>
+          <span class="d-num">${escapeHtml(t.num)}</span>
+          <span class="d-title">${escapeHtml(t.title)}</span>
+          ${isFav(t.id) ? '<span class="d-star" aria-label="Favorito">★</span>' : ""}
+        </a>
+        ${
+          sections.length
+            ? `<div class="d-sections">${sections
+                .map((x) => `<a href="#tema-${t.id}" data-s="${slugify(x)}">${escapeHtml(plain(x))}</a>`)
+                .join("")}</div>`
+            : ""
+        }`;
+    };
+    drawerList.innerHTML =
+      `<a class="d-item d-home${currentId === null ? " current" : ""}" href="#inicio"><span class="d-num">${ICON.home}</span><span class="d-title">Inicio</span></a>` +
+      topics.map(item).join("");
+  }
+
+  function openDrawer() {
+    if (wide.matches) return;
+    document.body.classList.add("drawer-open");
+    backdrop.hidden = false;
+    menuBtn.setAttribute("aria-expanded", "true");
+    const current = drawerList.querySelector(".current");
+    if (current) current.scrollIntoView({ block: "center" });
+    (current || drawerList.querySelector("a")).focus({ preventScroll: true });
+  }
+
+  function closeDrawer() {
+    if (!document.body.classList.contains("drawer-open")) return;
+    document.body.classList.remove("drawer-open");
+    backdrop.hidden = true;
+    menuBtn.setAttribute("aria-expanded", "false");
+  }
+
+  menuBtn.addEventListener("click", () =>
+    document.body.classList.contains("drawer-open") ? closeDrawer() : openDrawer()
+  );
+  document.getElementById("drawer-close").addEventListener("click", closeDrawer);
+  backdrop.addEventListener("click", closeDrawer);
+  drawerList.addEventListener("click", (e) => {
+    if (e.target.closest("a")) closeDrawer();
+  });
+
+  const smooth = () => (matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
+
+  // Resalta la sección que se está leyendo en los botones de secciones.
+  let sectionObserver = null;
+  function watchSections() {
+    if (sectionObserver) sectionObserver.disconnect();
+    const heads = [...app.querySelectorAll(".prose h2")];
+    const chips = [...app.querySelectorAll(".toc a")];
+    if (!heads.length || !chips.length || !("IntersectionObserver" in window)) return;
+    const setActive = (slug) => {
+      chips.forEach((c) => {
+        const on = c.dataset.s === slug;
+        c.classList.toggle("active", on);
+        if (on) {
+          const bar = c.parentElement;
+          bar.scrollTo({ left: c.offsetLeft - bar.clientWidth / 2 + c.clientWidth / 2, behavior: smooth() });
+        }
+      });
+      drawerList.querySelectorAll(".d-sections a").forEach((a) => a.classList.toggle("active", a.dataset.s === slug));
+    };
+    sectionObserver = new IntersectionObserver(
+      () => {
+        const line = window.innerHeight * 0.3;
+        let current = null;
+        heads.forEach((h) => {
+          if (h.getBoundingClientRect().top < line) current = h;
+        });
+        setActive(current ? current.id.slice(2) : null);
+      },
+      { rootMargin: "0px 0px -70% 0px", threshold: [0, 1] }
+    );
+    heads.forEach((h) => sectionObserver.observe(h));
+  }
+
+  function updateProgress() {
+    if (!document.body.classList.contains("reading")) {
+      progress.style.transform = "scaleX(0)";
+      return;
+    }
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    progress.style.transform = `scaleX(${max > 0 ? Math.min(1, window.scrollY / max) : 0})`;
+  }
+  window.addEventListener("scroll", updateProgress, { passive: true });
+
+  // Deslizar a la izquierda o derecha para cambiar de tema.
+  let touch = null;
+  app.addEventListener(
+    "touchstart",
+    (e) => {
+      const el = e.target;
+      touch = e.touches.length === 1 && !el.closest(".toc, .table-wrap, input") ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+    },
+    { passive: true }
+  );
+  app.addEventListener(
+    "touchend",
+    (e) => {
+      if (!touch || !document.body.classList.contains("reading")) return;
+      const dx = e.changedTouches[0].clientX - touch.x;
+      const dy = e.changedTouches[0].clientY - touch.y;
+      touch = null;
+      if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) goRelative(dx < 0 ? 1 : -1);
+    },
+    { passive: true }
+  );
+
+  function goRelative(step) {
+    const m = location.hash.match(/^#tema-(\d+)$/);
+    if (!m) return;
+    const pos = topics.findIndex((t) => t.id === parseInt(m[1], 10));
+    const target = topics[pos + step];
+    if (target) location.hash = "tema-" + target.id;
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") return closeDrawer();
+    if (e.target.closest("input, textarea") || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === "ArrowLeft") goRelative(-1);
+    if (e.key === "ArrowRight") goRelative(1);
+    if (e.key === "/") {
+      e.preventDefault();
+      document.getElementById("btn-search").click();
+    }
+  });
 
   function markTerms(root, words) {
     if (!words.length) return;
@@ -417,6 +590,12 @@
   document.addEventListener("click", (e) => {
     const a = e.target.closest("a[data-q], a[data-s]");
     if (!a) return;
+    if (a.getAttribute("href") === location.hash && !a.dataset.q) {
+      e.preventDefault();
+      const target = document.getElementById("s-" + a.dataset.s);
+      if (target) target.scrollIntoView({ block: "start", behavior: smooth() });
+      return;
+    }
     pending = { q: a.dataset.q || "", s: a.dataset.s || "" };
     if (a.getAttribute("href") === location.hash) {
       e.preventDefault();
@@ -424,22 +603,41 @@
     }
   });
 
+  let view = null;
+  let homeScroll = 0;
+
   function route() {
     const hash = location.hash.slice(1);
     const params = pending;
     pending = {};
     const m = hash.match(/^tema-(\d+)$/);
 
-    if (m) {
+    if (view === "home") homeScroll = window.scrollY;
+    closeDrawer();
+    dock.hidden = true;
+    document.body.classList.remove("reading");
+    if (sectionObserver) sectionObserver.disconnect();
+
+    if (m && topics.some((t) => t.id === parseInt(m[1], 10))) {
+      view = "topic";
       renderTopic(parseInt(m[1], 10), params);
-    } else if (hash === "buscar") {
-      const input = renderHome(lastQuery);
-      input.focus();
-      window.scrollTo(0, 0);
+      renderDrawer(parseInt(m[1], 10));
     } else {
-      renderHome(lastQuery);
-      window.scrollTo(0, 0);
+      view = "home";
+      const input = renderHome(lastQuery);
+      renderDrawer(null);
+      if (hash === "buscar") {
+        window.scrollTo(0, 0);
+        input.focus();
+      } else {
+        window.scrollTo(0, homeScroll);
+      }
     }
+
+    app.classList.remove("enter");
+    void app.offsetWidth;
+    app.classList.add("enter");
+    updateProgress();
   }
 
   window.addEventListener("hashchange", route);
