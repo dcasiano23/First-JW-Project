@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Libro de Pastoreo</title>
+  <meta name="description" content="Apuntes de la escuela para ancianos y precursores, organizados por tema, con textos bíblicos enlazados a wol.jw.org.">
+  <meta name="theme-color" content="#2e6a4f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Pastoreo">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#inicio">
+      <img src="icons/icon.svg" alt="" width="28" height="28">
+      <span>Libro de Pastoreo</span>
+    </a>
+    <div class="tools">
+      <button id="btn-search" aria-label="Buscar" title="Buscar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      </button>
+      <button id="btn-size" aria-label="Cambiar tamaño de letra" title="Tamaño de letra">
+        <span class="size-icon" aria-hidden="true">A<small>A</small></span>
+      </button>
+      <button id="btn-theme" aria-label="Cambiar entre tema claro y oscuro" title="Tema claro / oscuro">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="app" tabindex="-1"></main>
+
+  <noscript><p style="padding:16px">Esta aplicación necesita JavaScript.</p></noscript>
+  <script src="js/content.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

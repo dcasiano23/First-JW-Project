@@ -1,0 +1,16 @@
+{
+  "name": "Libro de Pastoreo",
+  "short_name": "Pastoreo",
+  "description": "Apuntes de la escuela para ancianos y precursores, organizados por tema.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf8f3",
+  "theme_color": "#2e6a4f",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
