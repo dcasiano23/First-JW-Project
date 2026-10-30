@@ -1,6 +1,6 @@
 // Guarda la aplicación para que funcione sin conexión.
 // Cambie VERSION cada vez que actualice el contenido.
-const VERSION = "pastoreo-v2";
+const VERSION = "pastoreo-v3";
 const FILES = [
   "./",
   "index.html",
