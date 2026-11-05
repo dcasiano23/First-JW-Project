@@ -6,6 +6,10 @@ Aplicación web con los apuntes de la escuela para ancianos y precursores, organ
 - Favoritos, tamaño de letra y tema oscuro
 - Funciona sin conexión una vez abierta (cuando se publica en HTTPS)
 
+## Tareas
+
+En `tareas/` hay un tablero de tarjetas (Por hacer / En curso / Hecho): crear, editar, colores, fecha límite, filtro, y mover tarjetas arrastrándolas (en el teléfono, mantener presionado) o con las flechas. Se guarda en el navegador. Ábralo en `/tareas/`.
+
 ## Editar el contenido
 
 Todo el texto está en `js/content.js`, en un formato sencillo que se explica al principio del archivo. Después de cambiarlo, aumente `VERSION` en `sw.js` para que los teléfonos reciban la nueva versión.
