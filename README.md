@@ -20,7 +20,7 @@ _Material personal de estudio, basado en apuntes de clase. No es una publicació
 
 ---
 
-# Watch Ledger (`watches/`)
+# CIG Timepieces app (`watches/`)
 
 A separate app for running a watch business. Once GitHub Pages is on, it lives at `…/watches/` and can be added to a phone's home screen.
 
@@ -30,6 +30,7 @@ A separate app for running a watch business. Once GitHub Pages is on, it lives a
 - **Market:** log real **sold** prices (eBay sold listings, auctions, forum sales). Asking prices can be logged too, but they are kept apart and never count toward the market median. Quick links open eBay's sold-listings search.
 - **Your photos & videos:** add photos and videos of the actual watch (camera, library, drag & drop or paste). Stored on the device; download any file to keep the original.
 - **Pre-ship check:** checklist (identity, function, condition, packing), timegrapher numbers, carrier and tracking, with videos attached. "Sign off & lock" time-stamps it and locks the record and its videos so they can't be changed or removed — proof of how the watch left your hands.
+- **Branding:** CIG Timepieces name, logo (silver on dark screens, graphite on paper) and home-screen icon are built in; a logo or name entered under Business overrides them.
 - **Business & documents:** add your logo, business details, sale terms and thank-you message under Business. Each watch has one-tap Purchase agreement, Bill of sale (numbered invoices), Thank-you letter and Condition report — editable on screen, then Print / Save as PDF. Templates only; have an attorney review the wording.
 - **Configurations & accuracy:** `watches/catalog.js` lists references and the dials and bracelets/straps each one comes in (e.g. Speedmaster `.001` = bracelet, `.002` = strap; Black Bay 58 `-0001/-0002/-0003`). A watch logged in a configuration its reference doesn't come in is flagged "Check" with the reference that matches. Market → Reference guide lists every configuration.
 - **Backup:** data stays on the device. Export a JSON backup regularly (photos included; videos optional); import it on another device. CSV exports for spreadsheets.

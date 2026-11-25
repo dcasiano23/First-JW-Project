@@ -32,6 +32,10 @@
       toast("Could not save on this device — export a backup now.");
     }
   }
+  /* Built-in branding. Anything entered under Business overrides it. */
+  const DEFAULT_BIZ = { name: "CIG Timepieces" };
+  const abs = (p) => new URL(p, location.href).href;
+  const biz = () => ({ ...DEFAULT_BIZ, ...Object.fromEntries(Object.entries(db.business || {}).filter(([, v]) => v)) });
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
   /* ---------- Photos & videos (IndexedDB) ---------- */
@@ -379,10 +383,11 @@
   }
 
   function renderBrand() {
-    const b = db.business || {};
-    $("#brand").innerHTML = b.logo
-      ? `<img src="${b.logo}" alt="" class="brand-logo"><span>${esc(b.name || "Watch Ledger")}</span>`
-      : `<img src="icon.svg" alt="" width="26" height="26"><span>${esc(b.name || "Watch Ledger")}</span>`;
+    const b = biz();
+    $("#brand").innerHTML = db.business?.logo
+      ? `<img src="${db.business.logo}" alt="${esc(b.name)}" class="brand-logo">`
+      : `<img src="logo-ink.png" alt="${esc(b.name)}" class="brand-logo on-light"><img src="logo-silver.png" alt="" class="brand-logo on-dark">`;
+    document.title = b.name;
   }
 
   /* ---------- Dashboard ---------- */
@@ -742,10 +747,10 @@
           ${!isSold(w) && mk.median ? `<dt>If sold at median</dt><dd>${signed(mk.median - costBasis(w))} before fees</dd>` : ""}
         </dl>`
       : `<p class="muted">No market comps logged for this reference yet.</p>`;
-    const bizMissing = !db.business?.name;
+    const bizMissing = !db.business?.address && !db.business?.phone && !db.business?.email;
 
     openSheet(label(w), `
-      <div class="hero">
+      <div class="media-hero">
         <div class="viewer" id="viewer">${first ? "" : placeholderHTML(w)}</div>
         <div class="hero-strip">
           ${all.map((m) => mediaTileHTML(m, m === first, isLockedMedia(w, m))).join("")}
@@ -786,7 +791,7 @@
           <button class="docbtn" data-doc="thanks"><strong>Thank-you letter</strong><span>${w.soldTo ? "For " + esc(w.soldTo) : "For your client"}</span></button>
           ${checks.length ? `<button class="docbtn" data-doc="report"><strong>Condition report</strong><span>From the ${lastLocked(w) ? "signed-off" : "draft"} pre-ship check</span></button>` : ""}
         </div>
-        ${bizMissing ? `<p class="muted" style="font-size:13px;margin:8px 0 0">Add your business name, logo and terms under <a href="#settings">Business</a> — they're printed on every document.</p>` : ""}
+        ${bizMissing ? `<p class="muted" style="font-size:13px;margin:8px 0 0">Add your address, phone, email and sale terms under <a href="#settings">Business</a> — they're printed on every document.</p>` : ""}
       </div>
 
       <div class="card section">
@@ -1043,7 +1048,7 @@
     const ck = (w.checks || []).find((c) => c.id === checkId) || lastLocked(w) || (w.checks || []).slice(-1)[0];
     const files = ck ? mediaFor(w.id).filter((m) => m.checkId === ck.id) : [];
     return {
-      biz: db.business || {},
+      biz: { ...biz(), logo: db.business?.logo || abs("logo-ink.png") },
       w,
       cfg: { dial: CAT.DIALS[spec.dial]?.label, strap: CAT.STRAPS[spec.strap]?.label },
       money: (v) => (v === "" || v == null ? "" : money(num(v))),
@@ -1555,7 +1560,7 @@
   /* ---------- Business, backup & settings ---------- */
 
   function renderSettings() {
-    const b = db.business || {};
+    const b = biz();
     const all = [...media.values()].flat();
     const nP = all.filter((m) => m.kind === "photo").length, nV = all.filter((m) => m.kind === "video").length;
     const vBytes = all.filter((m) => m.kind === "video").reduce((t, m) => t + (m.size || 0), 0);
@@ -1565,14 +1570,14 @@
       <form class="section card form" id="biz" autocomplete="off">
         <h3>Business details — printed on every document</h3>
         <div class="logo-row">
-          <div class="logo-box" id="logo-box">${b.logo ? `<img src="${b.logo}" alt="Logo">` : `<span class="muted">No logo</span>`}</div>
+          <div class="logo-box" id="logo-box"><img src="${b.logo || "logo-ink.png"}" alt="Logo"></div>
           <div class="row-actions">
-            <label class="btn small primary">${b.logo ? "Change logo" : "Upload logo"}<input type="file" accept="image/*" hidden id="logo-in"></label>
-            ${b.logo ? `<button type="button" class="btn small danger" id="logo-rm">Remove</button>` : ""}
+            <label class="btn small">${b.logo ? "Change logo" : "Use a different logo"}<input type="file" accept="image/*" hidden id="logo-in"></label>
+            ${b.logo ? `<button type="button" class="btn small" id="logo-rm">Back to CIG logo</button>` : ""}
           </div>
         </div>
         <div class="grid2">
-          <label>Business name<input name="name" value="${esc(b.name)}" placeholder="Your business name"></label>
+          <label>Business name<input name="name" value="${esc(b.name)}"></label>
           <label>Your name &amp; title (signs documents)<input name="signer" value="${esc(b.signer)}" placeholder="e.g. Jane Smith, Owner"></label>
         </div>
         <label>Address<textarea name="address" rows="2">${esc(b.address)}</textarea></label>
@@ -1661,7 +1666,7 @@
         parts.push((i ? "," : "") + JSON.stringify({ ...meta, data: await blobToDataURL(blob) }));
       }
       parts.push("]}");
-      saveBlob(new Blob(parts, { type: "application/json" }), `watch-ledger-backup-${today()}.json`);
+      saveBlob(new Blob(parts, { type: "application/json" }), `cig-timepieces-backup-${today()}.json`);
     });
     $("#imp").addEventListener("change", async (e) => {
       const file = e.target.files[0];
@@ -1687,7 +1692,7 @@
         } catch { toast("Records imported, but some files couldn't be stored."); }
         save(); await loadMedia(); setFormats(); applyTheme(); renderBrand(); render(); toast("Backup imported");
       } catch {
-        toast("That file isn't a Watch Ledger backup (or it's too large to open here).");
+        toast("That file isn't a CIG Timepieces backup (or it's too large to open here).");
       }
     });
     $("#csv-all").addEventListener("click", () => download(`watches-${today()}.csv`, toCSV(db.watches), "text/csv"));
@@ -1809,6 +1814,7 @@
   }
 
   /* ---------- Start ---------- */
+  
 
   $("#btn-add").addEventListener("click", () => editWatch());
   applyTheme();

@@ -13,24 +13,24 @@ window.WatchDocs = (() => {
     * { box-sizing: border-box; }
     html { background: #e9e6df; }
     body { margin: 0; font: 11pt/1.5 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; color: #1a1d21; }
-    .bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #15222f; color: #f3efe6; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
-    .bar button { font: 600 15px system-ui, sans-serif; padding: 9px 16px; border-radius: 9px; border: 0; background: #d8b46a; color: #17120a; cursor: pointer; }
+    .bar { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #0b0b0c; color: #eceef1; font: 14px/1.4 system-ui, -apple-system, sans-serif; }
+    .bar button { font: 600 15px system-ui, sans-serif; padding: 9px 16px; border-radius: 9px; border: 0; background: #e4e7eb; color: #0b0b0c; cursor: pointer; }
     .page { max-width: 8.5in; margin: 18px auto; background: #fff; padding: 0.65in; box-shadow: 0 2px 18px rgba(0,0,0,.12); outline: none; }
     @media (max-width: 700px) { .page { margin: 0; padding: 22px 18px; box-shadow: none; } }
     @media print { html { background: #fff; } .bar { display: none; } .page { margin: 0; padding: 0; box-shadow: none; max-width: none; } }
     .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; border-bottom: 2px solid #1a1d21; padding-bottom: 14px; margin-bottom: 22px; }
-    .head img { max-height: 70px; max-width: 220px; object-fit: contain; }
+    .head img { max-height: 96px; max-width: 200px; object-fit: contain; }
     .biz-name { font-size: 17pt; font-weight: 600; letter-spacing: .01em; }
     .biz { text-align: right; font: 9pt/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #444; }
     h1 { font-size: 20pt; font-weight: 600; margin: 0 0 4px; letter-spacing: .01em; }
     .meta { font: 9.5pt system-ui, sans-serif; color: #555; margin-bottom: 18px; }
-    h2 { font: 700 8.5pt system-ui, sans-serif; text-transform: uppercase; letter-spacing: .1em; color: #6b5420; margin: 20px 0 8px; }
+    h2 { font: 700 8.5pt system-ui, sans-serif; text-transform: uppercase; letter-spacing: .1em; color: #4d535b; margin: 20px 0 8px; }
     table { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
     td, th { padding: 6px 8px; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; }
     th { width: 34%; color: #555; font-weight: 500; }
     .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
     .party { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; font-size: 10.5pt; }
-    .party .lbl { font: 700 8pt system-ui, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #6b5420; margin-bottom: 4px; }
+    .party .lbl { font: 700 8pt system-ui, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #4d535b; margin-bottom: 4px; }
     .total { display: flex; justify-content: space-between; font-size: 13pt; font-weight: 700; border-top: 2px solid #1a1d21; margin-top: 10px; padding-top: 8px; }
     ol { padding-left: 18px; } li { margin-bottom: 6px; }
     .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 44px; page-break-inside: avoid; }
@@ -175,7 +175,7 @@ Thank you again for your trust and your business.`;
       ${k.shots.length ? `<div class="shots">${k.shots.map((s) => `<img src="${s}" alt="">`).join("")}</div>` : ""}
       ${k.notes ? `<h2>Notes</h2><p>${nl(k.notes)}</p>` : ""}
       ${sigs({ name: k.by || c.biz.signer, role: "Inspected by" }, { name: "", role: "Witness (optional)" })}
-      <div class="foot">Report generated ${esc(c.today)} from Watch Ledger records. Original video files are kept on file by ${esc(c.biz.name || "the seller")}.</div>`;
+      <div class="foot">Report generated ${esc(c.today)}. Original video files are kept on file by ${esc(c.biz.name || "the seller")}.</div>`;
     return shell(`Condition Report — ${watchName(w)}`, body);
   }
 
