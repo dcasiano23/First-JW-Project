@@ -28,6 +28,8 @@ A separate app for running a watch business. Once GitHub Pages is on, it lives a
 - **Inventory:** current and past watches in one searchable list (brand, model, reference, serial, seller…). Searching a reference shows what you paid before, what you sold it for, and the market median.
 - **Add watch:** typing a reference you've seen before shows your past buy prices and how much room there is to the market median before you buy.
 - **Market:** log real **sold** prices (eBay sold listings, auctions, forum sales). Asking prices can be logged too, but they are kept apart and never count toward the market median. Quick links open eBay's sold-listings search.
+- **Pictures:** every watch gets an illustration drawn from its configuration — case, bezel, dial colour and bracelet or strap — so the picture changes when the configuration does. Add your own photos of each watch (stored on the device, included in backups).
+- **Configurations & accuracy:** `watches/catalog.js` lists references and the dials and bracelets/straps each one comes in (e.g. Speedmaster `.001` = bracelet, `.002` = strap; Black Bay 58 `-0001/-0002/-0003`). A watch logged in a configuration its reference doesn't come in is flagged "Check" with the reference that matches. Market → Reference guide shows every configuration. References not in the catalog can be styled by hand; the look is remembered per reference.
 - **Backup:** data stays on the device. Export a JSON backup regularly; import it on another device. CSV exports for spreadsheets.
 
 Net profit = sale price − fees & shipping out − (price paid + extra costs such as service or shipping in).
