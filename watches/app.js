@@ -55,7 +55,8 @@
         const t = d.transaction("photos", mode);
         const req = fn(t.objectStore("photos"));
         t.oncomplete = () => res(req && "result" in req ? req.result : undefined);
-        t.onerror = () => rej(t.error);
+        t.onerror = () => rej(t.error || new Error("Storage error"));
+        t.onabort = () => rej(t.error || new Error("Storage cancelled"));
       });
     };
     return {
@@ -132,34 +133,83 @@
       v.src = url;
     });
   }
+  const VIDEO_EXT = /\.(mov|mp4|m4v|3gp|3g2|avi|mkv|webm|hevc)$/i;
+  const IMAGE_EXT = /\.(jpe?g|png|heic|heif|webp|gif|tiff?|bmp)$/i;
+  function kindOf(file, hint) {
+    const t = file.type || "";
+    if (t.startsWith("video/")) return "video";
+    if (t.startsWith("image/")) return "photo";
+    if (VIDEO_EXT.test(file.name || "")) return "video";
+    if (IMAGE_EXT.test(file.name || "")) return "photo";
+    return hint || null; // came from an "Add video" / "Add photo" button
+  }
+  const withTimeout = (p, ms, fallback) => Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), ms))]);
+  async function roomFor(bytes) {
+    try {
+      const e = await navigator.storage?.estimate?.();
+      if (!e || !e.quota) return { ok: true };
+      const free = e.quota - (e.usage || 0);
+      return { ok: free > bytes * 1.1, free };
+    } catch { return { ok: true }; }
+  }
   let persistAsked = false;
-  async function addMedia(watchId, file, extra = {}) {
+  async function addMedia(watchId, file, extra = {}, hint) {
     if (!persistAsked) { persistAsked = true; try { await navigator.storage?.persist?.(); } catch {} }
     const created = new Date().toISOString();
     let rec;
-    if (file.type.startsWith("video/")) {
-      const { thumb, duration } = await videoPoster(file);
-      rec = { id: uid(), watchId, kind: "video", blob: file, type: file.type, name: file.name || "video", size: file.size, duration, thumb, created, ...extra };
-    } else if (file.type.startsWith("image/")) {
+    const kind = kindOf(file, hint);
+    if (kind === "video") {
+      const { thumb, duration } = await withTimeout(videoPoster(file), 7000, { thumb: null, duration: null });
+      const type = file.type || (/\.mov$/i.test(file.name || "") ? "video/quicktime" : "video/mp4");
+      rec = { id: uid(), watchId, kind: "video", blob: file, type, name: file.name || "video", size: file.size, duration, thumb, created, ...extra };
+    } else if (kind === "photo") {
       rec = { id: uid(), watchId, kind: "photo", data: await shrink(file, 1800, 0.86), thumb: await shrink(file, 480, 0.8), name: file.name || "photo", size: file.size, created, ...extra };
     } else return null;
-    await mediaDB.put(rec);
+    try {
+      await mediaDB.put(rec);
+    } catch (err) {
+      // Some iPhone versions can't store a picked file directly; retry with a plain copy of its bytes.
+      if (rec.kind !== "video" || file.size > 600e6) throw err;
+      rec.blob = new Blob([await file.arrayBuffer()], { type: rec.type });
+      await mediaDB.put(rec);
+    }
     if (!media.has(watchId)) media.set(watchId, []);
     media.get(watchId).push(metaOf(rec));
     return rec;
   }
-  async function addFiles(watchId, files, extra) {
-    const list = [...files].filter((f) => /^(image|video)\//.test(f.type));
-    if (!list.length) { toast("Only photos and videos can be added."); return 0; }
-    const total = list.reduce((t, f) => t + f.size, 0);
-    toast(list.length > 1 ? `Saving ${list.length} files (${fmtSize(total)})…` : list[0].type.startsWith("video/") ? `Saving video (${fmtSize(total)})…` : "Saving photo…", { ms: 60000 });
+  async function addFiles(watchId, files, extra, hint) {
+    const list = [...files].filter((f) => kindOf(f, hint));
+    if (!list.length) { toast("Those files aren't photos or videos."); return 0; }
     let n = 0;
-    for (const f of list) {
-      try { if (await addMedia(watchId, f, extra)) n++; }
-      catch { toast("Not enough space on this device to save that file."); break; }
+    const failed = [];
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i], kind = kindOf(f, hint);
+      const label = `${kind === "video" ? "video" : "photo"}${list.length > 1 ? ` ${i + 1} of ${list.length}` : ""}`;
+      if (kind === "video") {
+        const room = await roomFor(f.size);
+        if (!room.ok) { failed.push(`${f.name || label} is ${fmtSize(f.size)} — only ${fmtSize(room.free)} of space is left for the app.`); continue; }
+      }
+      busy(`Saving ${label}${f.size ? ` · ${fmtSize(f.size)}` : ""}… keep the app open`);
+      try { if (await addMedia(watchId, f, extra, hint)) n++; }
+      catch (err) {
+        const quota = /quota|space|abort|cancel|storage/i.test(`${err?.name} ${err?.message}`);
+        failed.push(`${f.name || label}${f.size ? ` (${fmtSize(f.size)})` : ""} couldn't be saved${quota ? " — the phone ran out of space for the app" : ""}.`);
+      }
     }
-    if (n) toast(n > 1 ? `${n} files saved` : list[0].type.startsWith("video/") ? "Video saved" : "Photo saved");
+    busy(null);
+    if (failed.length) {
+      await ask(`${n ? `${n} saved. ` : ""}${failed.join("\n")}\n\nTip: long 4K videos are very large. Record at 1080p (iPhone Settings → Camera → Record Video) or keep clips under a minute, and free up space on the phone if needed.`, { buttons: [{ label: "OK", value: true, kind: "primary" }] });
+    } else if (n) toast(n > 1 ? `${n} files saved` : kindOf(list[0], hint) === "video" ? "Video saved" : "Photo saved");
     return n;
+  }
+  /* A "working…" banner that stays up until the job is done (above whichever screen is open). */
+  function busy(msg) {
+    let el = $("#busy");
+    if (!msg) { el?.remove(); return; }
+    if (!el) { el = document.createElement("div"); el.id = "busy"; el.className = "busy"; el.setAttribute("role", "status"); }
+    const host = [$("#ask"), sheet].find((d) => d.open) || document.body;
+    if (el.parentNode !== host) host.appendChild(el);
+    el.innerHTML = `<span class="spin" aria-hidden="true"></span><span>${esc(msg)}</span>`;
   }
   async function removeMedia(watchId, id) {
     await mediaDB.del(id);
@@ -401,7 +451,7 @@
   /* Paste (Ctrl/Cmd+V) or drag & drop photos and videos onto an open watch or check. */
   document.addEventListener("paste", (e) => {
     if (!dropTarget || e.target.closest?.("input, textarea")) return;
-    const files = [...(e.clipboardData?.files || [])].filter((f) => /^(image|video)\//.test(f.type));
+    const files = [...(e.clipboardData?.files || [])].filter((f) => kindOf(f));
     if (!files.length) return;
     e.preventDefault();
     dropTarget(files);
@@ -896,16 +946,16 @@
           render(); showWatch(w.id);
         }
       });
-      const add = async (files) => {
+      const add = async (files, hint) => {
         const before = new Set(mediaFor(w.id).map((m) => m.id));
-        if (!(await addFiles(w.id, files))) return;
+        if (!(await addFiles(w.id, files, undefined, hint))) return;
         const added = mediaFor(w.id).filter((m) => !before.has(m.id));
         // Show a newly added photo; for videos keep the current photo on screen.
         const focus = added.find((m) => m.kind === "photo")?.id || viewer.dataset.showing || added[0]?.id;
         render(); showWatch(w.id, focus);
       };
       dropTarget = add;
-      $$("[data-add]", root).forEach((inp) => inp.addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; add(f); }));
+      $$("[data-add]", root).forEach((inp) => inp.addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; add(f, inp.dataset.add === "video" ? "video" : "photo"); }));
 
       $("#w-check", root).addEventListener("click", () => editCheck(w));
       $$("[data-check]", root).forEach((b) => b.addEventListener("click", () => editCheck(w, b.dataset.check)));
@@ -1039,15 +1089,15 @@
         c.updated = new Date().toISOString();
       };
       if (!ro) {
-        const add = async (files) => {
+        const add = async (files, hint) => {
           collect(); save();
-          if (await addFiles(w.id, files, { checkId: c.id })) {
+          if (await addFiles(w.id, files, { checkId: c.id }, hint)) {
             if (filesOf().some((m) => m.kind === "video") && !c.items.filmed) { c.items.filmed = "pass"; save(); $$('[data-item="filmed"]', root).forEach((b) => b.setAttribute("aria-pressed", b.dataset.val === "pass")); }
             drawMedia(); render();
           }
         };
         dropTarget = add;
-        $$("[data-cadd]", root).forEach((inp) => inp.addEventListener("change", (e) => { const fl = [...e.target.files]; e.target.value = ""; add(fl); }));
+        $$("[data-cadd]", root).forEach((inp) => inp.addEventListener("change", (e) => { const fl = [...e.target.files]; e.target.value = ""; add(fl, inp.accept.startsWith("video") ? "video" : "photo"); }));
         $$("[data-item]", root).forEach((b) => b.addEventListener("click", () => {
           const k = b.dataset.item;
           c.items[k] = c.items[k] === b.dataset.val ? undefined : b.dataset.val;
@@ -1322,15 +1372,15 @@
           drawPhotos();
         }));
       }
-      const queue = (files) => {
-        files.filter((file) => /^(image|video)\//.test(file.type)).forEach((file) => {
-          const kind = file.type.startsWith("video/") ? "video" : "photo";
+      const queue = (files, hint) => {
+        files.filter((file) => kindOf(file, hint)).forEach((file) => {
+          const kind = kindOf(file, hint);
           pending.push({ file, kind, url: kind === "photo" ? URL.createObjectURL(file) : "" });
         });
         drawPhotos();
       };
       dropTarget = queue;
-      $$("[data-pin]", root).forEach((inp) => inp.addEventListener("change", (e) => { const fl = [...e.target.files]; e.target.value = ""; queue(fl); }));
+      $$("[data-pin]", root).forEach((inp) => inp.addEventListener("change", (e) => { const fl = [...e.target.files]; e.target.value = ""; queue(fl, inp.accept.startsWith("video") ? "video" : "photo"); }));
 
       function updateHints() {
         const t = { brand: f.brand.value, model: f.model.value, ref: f.ref.value };
@@ -1376,7 +1426,9 @@
         save();
         try {
           for (const pid of removed) await removeMedia(id, pid);
-          if (pending.length) await addFiles(id, pending.map((p) => p.file));
+          const files = pending.filter((p) => p.kind === "photo").map((p) => p.file), vids = pending.filter((p) => p.kind === "video").map((p) => p.file);
+          if (files.length) await addFiles(id, files, undefined, "photo");
+          if (vids.length) await addFiles(id, vids, undefined, "video");
           pending.forEach((p) => p.url && URL.revokeObjectURL(p.url));
         } catch { toast("Watch saved, but some files couldn't be stored on this device."); }
         render();

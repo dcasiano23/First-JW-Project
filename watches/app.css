@@ -602,3 +602,13 @@ dialog.ask { width: min(380px, calc(100% - 32px)); margin: auto; border-radius: 
 .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--brass-soft); }
 
 @media (max-width: 520px) { .grid2.stack-sm { grid-template-columns: 1fr; } }
+
+/* ---------- Saving banner ---------- */
+.busy {
+  position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top, 0px)); transform: translateX(-50%);
+  z-index: 40; display: flex; align-items: center; gap: 10px;
+  max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 12px;
+  background: var(--text); color: var(--bg); font-weight: 600; font-size: 14px; box-shadow: var(--shadow-lift);
+}
+.spin { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
