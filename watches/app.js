@@ -1475,7 +1475,6 @@
     const floor = median ? `&_udlo=${Math.floor((median * 0.4) / 100) * 100}` : "";
     return `<div class="links">
       <a class="btn small primary" target="_blank" rel="noopener" href="https://www.ebay.com/sch/i.html?_nkw=${enc}&_sacat=31387&LH_Sold=1&LH_Complete=1&_sop=13${floor}">eBay — sold listings</a>
-      <a class="btn small" target="_blank" rel="noopener" href="https://130point.com/sales/">130point — real Best Offer prices</a>
     </div>`;
   }
 
@@ -1554,7 +1553,7 @@
         <h3>Check real sold prices</h3>
         ${soldLinks(q, (m90?.median || m180?.median))}
         <div class="note" style="margin-top:8px"><strong>Sold only.</strong> The eBay button shows completed sales for this reference, newest first, in Wristwatches${m180?.median ? ", hiding cheap results like straps and boxes" : ""}.
-          If a result says <strong>“Best offer accepted”</strong>, the crossed-out price is what the seller <em>asked</em>, not what it sold for — copy that listing's link into 130point to see the real price.
+          If a result says <strong>“Best offer accepted”</strong>, the price shown is what the seller <em>asked</em> — eBay hides what it really sold for, which is usually lower. <strong>Skip those results</strong> unless you know the actual price.
           Chrono24 and dealer sites only show watches <em>for sale</em>, so they're not used for comps here.</div>
       </div>
       <form class="section card form" id="quick" autocomplete="off" novalidate>
@@ -1637,7 +1636,7 @@
     </button>`;
   }
 
-  const SOURCES = ["eBay (sold)", "eBay Best Offer (130point)", "Auction result (realized price)", "Forum / dealer group (sold)", "Private sale", "My own sale", "Other (sold)"];
+  const SOURCES = ["eBay (sold)", "Auction result (realized price)", "Forum / dealer group (sold)", "Private sale", "My own sale", "Other (sold)"];
   const ASK_SOURCES = ["Chrono24 listing", "eBay active listing", "Dealer listing", "Instagram / forum listing", "Other listing"];
 
   function editComp(c = {}) {
