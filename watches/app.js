@@ -106,13 +106,13 @@
         if (done) return;
         done = true;
         const duration = isFinite(v.duration) ? v.duration : null;
+        try { v.pause(); v.removeAttribute("src"); v.load(); } catch {}
         URL.revokeObjectURL(url);
         res({ thumb, duration });
       };
-      v.muted = true; v.playsInline = true; v.preload = "auto";
-      v.onloadeddata = () => { try { v.currentTime = Math.min(0.6, (v.duration || 1) / 2); } catch { finish(null); } };
-      v.onseeked = () => {
+      const grab = () => {
         try {
+          if (!v.videoWidth) return finish(null);
           const k = Math.min(1, 480 / Math.max(v.videoWidth, v.videoHeight));
           const c = document.createElement("canvas");
           c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
@@ -120,8 +120,15 @@
           finish(c.toDataURL("image/jpeg", 0.75));
         } catch { finish(null); }
       };
+      v.muted = true; v.playsInline = true; v.setAttribute("playsinline", ""); v.preload = "auto";
+      v.addEventListener("loadedmetadata", async () => {
+        // iPhone only decodes frames once playback starts, so play briefly (muted) before seeking.
+        try { await v.play(); v.pause(); } catch {}
+        try { v.currentTime = Math.min(0.5, (v.duration || 1) / 3); } catch { grab(); }
+      }, { once: true });
+      v.addEventListener("seeked", grab, { once: true });
       v.onerror = () => finish(null);
-      setTimeout(() => finish(null), 8000);
+      setTimeout(() => (v.videoWidth ? grab() : finish(null)), 6000);
       v.src = url;
     });
   }
@@ -144,13 +151,14 @@
   async function addFiles(watchId, files, extra) {
     const list = [...files].filter((f) => /^(image|video)\//.test(f.type));
     if (!list.length) { toast("Only photos and videos can be added."); return 0; }
-    toast(list.length > 1 ? `Saving ${list.length} files…` : list[0].type.startsWith("video/") ? "Saving video…" : "Saving photo…");
+    const total = list.reduce((t, f) => t + f.size, 0);
+    toast(list.length > 1 ? `Saving ${list.length} files (${fmtSize(total)})…` : list[0].type.startsWith("video/") ? `Saving video (${fmtSize(total)})…` : "Saving photo…", { ms: 60000 });
     let n = 0;
     for (const f of list) {
       try { if (await addMedia(watchId, f, extra)) n++; }
       catch { toast("Not enough space on this device to save that file."); break; }
     }
-    if (n) toast(n > 1 ? `${n} files saved` : "Saved");
+    if (n) toast(n > 1 ? `${n} files saved` : list[0].type.startsWith("video/") ? "Video saved" : "Photo saved");
     return n;
   }
   async function removeMedia(watchId, id) {
@@ -299,6 +307,16 @@
     };
   }
 
+  /* What you can pay and still make your target: market median - selling fees - shipping/other - target profit. */
+  const buyPlan = () => ({ fee: num(db.settings.planFeePct), ship: num(db.settings.planShip), profit: num(db.settings.planProfit) });
+  function maxBuy(median) {
+    if (!median) return null;
+    const p = buyPlan();
+    const breakEven = median * (1 - p.fee / 100) - p.ship;
+    return { breakEven, max: breakEven - p.profit, ...p };
+  }
+  const bestMedian = (t) => { const m90 = marketFor(t, { days: 90 }); if (m90.soldCount) return { m: m90, days: 90 }; const m180 = marketFor(t); return m180.soldCount ? { m: m180, days: 180 } : null; };
+
   /* ---------- Month numbers ---------- */
 
   function monthStats(ym) {
@@ -330,12 +348,29 @@
   const ui = { tab: "dashboard", month: thisMonth(), q: "", filter: "all", sort: "recent", mq: "" };
   let dropTarget = null; // function(files) for the open sheet that accepts pasted / dropped photos & videos
 
-  function toast(msg) {
+  function toast(msg, { action, ms } = {}) {
     const t = $("#toast");
-    t.textContent = msg;
+    // A modal screen sits above the page, so the message has to live inside whichever one is open.
+    const host = [$("#ask"), sheet].find((d) => d.open) || document.body;
+    if (t.parentNode !== host) host.appendChild(t);
+    t.innerHTML =`<span>${esc(msg)}</span>${action ? `<button type="button">${esc(action.label)}</button>` : ""}`;
+    if (action) t.querySelector("button").addEventListener("click", () => { t.classList.remove("show"); action.fn(); }, { once: true });
+    t.classList.toggle("has-action", !!action);
     t.classList.add("show");
     clearTimeout(toast.t);
-    toast.t = setTimeout(() => t.classList.remove("show"), 2800);
+    toast.t = setTimeout(() => t.classList.remove("show"), ms || (action ? 9000 : 2800));
+  }
+
+  /* In-app confirmation (the browser's own pop-ups can freeze iPhone home-screen apps). */
+  function ask(message, { ok = "OK", cancel = "Cancel", danger = false, buttons } = {}) {
+    const dlg = $("#ask");
+    const list = buttons || [{ label: cancel, value: false }, { label: ok, value: true, kind: danger ? "danger-fill" : "primary" }];
+    dlg.innerHTML = `<form method="dialog" class="ask-box"><p>${esc(message).replace(/\n/g, "<br>")}</p><div class="ask-actions">${list.map((b, i) => `<button class="btn ${b.kind || ""}" value="${i}">${esc(b.label)}</button>`).join("")}</div></form>`;
+    return new Promise((res) => {
+      dlg.addEventListener("close", () => { const i = dlg.returnValue; res(i === "" || i == null ? (buttons ? null : false) : list[+i].value); }, { once: true });
+      dlg.returnValue = "";
+      dlg.showModal();
+    });
   }
 
   function openSheet(title, html, onReady) {
@@ -711,7 +746,7 @@
     const info = `<div class="viewer-info"><span>${m.kind === "video" ? "Video" : "Photo"} · ${esc(fmtWhen(m.created))}${m.size ? " · " + fmtSize(m.size) : ""}${locked ? " · 🔒 pre-ship record" : ""}</span>
       <span class="row-actions"><button type="button" class="btn small" data-dl="${m.id}">Download</button>${locked ? "" : `<button type="button" class="btn small danger" data-rm="${m.id}">Remove</button>`}</span></div>`;
     if (m.kind === "video") {
-      main.innerHTML = `<div class="viewer-box">${m.thumb ? `<img class="pic photo" src="${m.thumb}" alt="">` : ""}<span class="play big">▶</span></div>${info}`;
+      main.innerHTML = `<div class="viewer-box">${m.thumb ? `<img class="pic photo" src="${m.thumb}" alt="">` : `<span class="vid-label">Loading video…</span>`}<span class="play big">▶</span></div>${info}`;
       try {
         const rec = await mediaDB.get(m.id);
         if (main.dataset.showing !== m.id) return;
@@ -844,12 +879,19 @@
         const dl = e.target.closest("[data-dl]"), rm = e.target.closest("[data-rm]");
         if (dl) downloadMedia(dl.dataset.dl);
         if (rm) {
-          if (!confirm("Remove this file from the watch?")) return;
+          if (!(await ask("Remove this file from the watch?", { ok: "Remove", danger: true }))) return;
           await removeMedia(w.id, rm.dataset.rm);
           render(); showWatch(w.id);
         }
       });
-      const add = async (files) => { if (await addFiles(w.id, files)) { render(); showWatch(w.id, mediaFor(w.id).at(-1)?.id); } };
+      const add = async (files) => {
+        const before = new Set(mediaFor(w.id).map((m) => m.id));
+        if (!(await addFiles(w.id, files))) return;
+        const added = mediaFor(w.id).filter((m) => !before.has(m.id));
+        // Show a newly added photo; for videos keep the current photo on screen.
+        const focus = added.find((m) => m.kind === "photo")?.id || viewer.dataset.showing || added[0]?.id;
+        render(); showWatch(w.id, focus);
+      };
       dropTarget = add;
       $$("[data-add]", root).forEach((inp) => inp.addEventListener("change", (e) => { const f = [...e.target.files]; e.target.value = ""; add(f); }));
 
@@ -866,8 +908,7 @@
       });
       $("#w-del", root).addEventListener("click", async () => {
         const hasRecords = (w.checks || []).some((c) => c.locked);
-        if (!confirm(`Delete ${label(w)}? This cannot be undone.`)) return;
-        if (hasRecords && !confirm("This watch has signed-off pre-ship checks and recordings. Deleting it removes that proof too. Delete anyway?")) return;
+        if (!(await ask(`Delete ${label(w)}? This cannot be undone.${hasRecords ? "\n\nThis also deletes its signed-off pre-ship checks and recordings." : ""}`, { ok: "Delete", danger: true }))) return;
         db.watches = db.watches.filter((x) => x.id !== w.id);
         save();
         for (const m of mediaFor(w.id)) await removeMedia(w.id, m.id).catch(() => {});
@@ -943,7 +984,7 @@
       ${CHECK_GROUPS.map((g) => `<div class="section"><div class="section-head" style="margin-bottom:6px"><h3 style="margin:0">${esc(g.title)}</h3>${ro ? "" : `<button type="button" class="linkbtn" data-allpass="${esc(g.title)}">Mark unchecked as pass</button>`}</div>
         <div class="check-list">${g.items.map(([k, t]) => `<div class="check-item"><span>${esc(t)}</span>${seg(k, c.items[k])}</div>`).join("")}</div></div>`).join("")}
 
-      <form id="check-form" class="form section" autocomplete="off">
+      <form id="check-form" class="form section" autocomplete="off" novalidate>
         <fieldset ${ro ? "disabled" : ""}>
           <legend>Timing (timegrapher)</legend>
           <div class="grid3">
@@ -1009,24 +1050,18 @@
         }));
         $("#c-save", root).addEventListener("click", () => { collect(); save(); render(); toast("Draft saved"); showWatch(w.id); });
         $("#c-discard", root).addEventListener("click", async () => {
-          if (!confirm("Delete this draft check and its recordings?")) return;
+          if (!(await ask("Delete this draft check and its recordings?", { ok: "Delete", danger: true }))) return;
           for (const m of filesOf()) await removeMedia(w.id, m.id).catch(() => {});
           w.checks = w.checks.filter((x) => x.id !== c.id);
           save(); render(); showWatch(w.id);
         });
         $("#c-lock", root).addEventListener("click", () => {
           collect();
-          const s = checkStats(w, c);
-          const issues = [];
-          if (!s.videos) issues.push("• No video attached");
-          if (s.open) issues.push(`• ${s.open} item${s.open > 1 ? "s" : ""} not checked`);
-          if (s.fail) issues.push(`• ${s.fail} item${s.fail > 1 ? "s" : ""} marked FAIL`);
-          const msg = (issues.length ? `Before you sign off:\n${issues.join("\n")}\n\n` : "") + "Sign off and lock this check? It can't be edited afterwards.";
-          if (!confirm(msg)) return;
           c.locked = true;
           c.completedAt = new Date().toISOString();
-          save(); render(); toast("Signed off & locked");
+          save(); render();
           showWatch(w.id);
+          toast("Signed off & locked", { action: { label: "Undo", fn: () => { c.locked = false; delete c.completedAt; save(); render(); editCheck(w, c.id); } } });
         });
         // Closing an untouched new draft shouldn't leave clutter behind.
         sheet.addEventListener("sheetclosed", () => {
@@ -1104,12 +1139,12 @@
     const clients = db.watches.filter((x) => x.soldTo);
 
     openSheet(isNew ? "Add watch" : sell ? "Mark sold" : "Edit watch", `
-      <form class="form" id="wform" autocomplete="off">
+      <form class="form" id="wform" autocomplete="off" novalidate>
         <fieldset>
           <legend>Watch</legend>
           <div class="grid2">
             <label>Reference<input name="ref" list="dl-ref" value="${esc(w.ref)}" placeholder="e.g. 126610LN"></label>
-            <label>Brand<input name="brand" list="dl-brand" value="${esc(w.brand)}" required></label>
+            <label>Brand<input name="brand" list="dl-brand" value="${esc(w.brand)}"></label>
           </div>
           <label>Model<input name="model" list="dl-model" value="${esc(w.model)}"></label>
           <div class="grid3">
@@ -1280,7 +1315,8 @@
         if (h.sold.length) bits.push(`You sold it ${h.sold.length}× — avg ${money0(avg(h.sold.map((x) => num(x.sellPrice))))}, avg net ${money0(avg(h.sold.map(profit)))}.`);
         if (mk.soldCount) bits.push(`Market median <strong>sold</strong>: ${money0(mk.median)} (${mk.soldCount} sales, 180 days).`);
         const bp = num(f.buyPrice.value) + num(f.extraCosts.value);
-        if (mk.median && bp && !soldBox.checked) bits.push(`At this price, room to market median: ${signed(mk.median - bp)} before selling fees.`);
+        const bm = bestMedian(t), mb = bm && maxBuy(bm.m.median);
+        if (mb && !soldBox.checked) bits.push(`Max buy price for your target: <strong>${money0(mb.max)}</strong>${bp ? ` — you're ${bp <= mb.max ? `<span class="pos">${money0(mb.max - bp)} under</span>` : `<span class="neg">${money0(bp - mb.max)} over</span>`}` : ""}.`);
         $("#ref-hint", root).innerHTML = t.ref || t.model ? bits.join("<br>") : "";
         if (soldBox.checked && f.sellPrice.value) {
           $("#profit-hint", root).innerHTML = `Net profit: <strong>${signed(num(f.sellPrice.value) - num(f.sellFees.value) - bp)}</strong>`;
@@ -1354,10 +1390,11 @@
     return { ref: q.trim() };
   }
 
-  function soldLinks(q) {
+  function soldLinks(q, median) {
     const enc = encodeURIComponent(q);
+    const floor = median ? `&_udlo=${Math.floor((median * 0.4) / 100) * 100}` : "";
     return `<div class="links">
-      <a class="btn small" target="_blank" rel="noopener" href="https://www.ebay.com/sch/i.html?_nkw=${enc}&LH_Sold=1&LH_Complete=1&_sop=13">eBay — sold listings</a>
+      <a class="btn small primary" target="_blank" rel="noopener" href="https://www.ebay.com/sch/i.html?_nkw=${enc}&_sacat=31387&LH_Sold=1&LH_Complete=1&_sop=13${floor}">eBay — sold listings</a>
       <a class="btn small" target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent(q + " sold price")}">Search "sold price"</a>
       <a class="btn small" target="_blank" rel="noopener" href="https://www.chrono24.com/search/index.htm?query=${enc}">Chrono24 (asking prices)</a>
     </div>`;
@@ -1433,18 +1470,60 @@
           ${mineHist && mineHist.paid.length ? `<div class="note" style="margin-top:10px">You've paid ${mineHist.paid.map((x) => money0(num(x.buyPrice))).slice(0, 6).join(", ")}${mineHist.paid.length > 6 ? "…" : ""} for this reference (most recent first).</div>` : ""}`
         : `<h2>Comps matching “${esc(q)}”</h2>`}
       </div>
+      ${exactRef ? `<div class="section card plan" id="plan"></div>` : ""}
       <div class="section">
         <h3>Check real sold prices</h3>
-        ${soldLinks(q)}
+        ${soldLinks(q, (m90?.median || m180?.median))}
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Opens eBay's completed sales for this reference, newest first, in the Wristwatches category${m180?.median ? ", hiding cheap results like straps and boxes" : ""}.</p>
       </div>
+      <form class="section card form" id="quick" autocomplete="off" novalidate>
+        <h3 style="margin:0">Add the sold prices you just looked up</h3>
+        <label>Sold prices<input name="prices" inputmode="decimal" placeholder="e.g. 13,100  12,950  13,300"></label>
+        <div class="grid2">
+          <label>Source<select name="source">${options(SOURCES, "eBay (sold)")}</select></label>
+          <label>Date sold<input type="date" name="date" value="${today()}"></label>
+        </div>
+        <div class="actions" style="position:static;background:none;padding:0"><button type="submit" class="btn primary">Add sold prices</button></div>
+      </form>
       <div class="section">
         <div class="section-head"><h3 style="margin:0">Logged comps (${comps.length})</h3><button class="btn small" id="add-comp-2">Log a comp</button></div>
         ${comps.length ? `<div class="list">${comps.map(compHTML).join("")}</div>` : `<div class="empty">No comps logged for this yet.</div>`}
       </div>
     `;
     $("#add-comp-2").addEventListener("click", () => editComp(target));
+    if (exactRef) drawPlan(target);
+    $("#quick").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const prices = (f.prices.value.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g) || []).map((x) => num(x)).filter((x) => x > 0);
+      if (!prices.length) { toast("Type one or more prices first."); return; }
+      const ref = (target.ref || q).toUpperCase();
+      prices.forEach((price) => db.comps.push({ id: uid(), created: new Date().toISOString(), kind: "sold", ref, brand: target.brand || "", model: target.model || "", price, date: f.date.value || today(), source: f.source.value, condition: "", set: "", link: "", notes: "" }));
+      save(); drawMarket();
+      toast(`${prices.length} sold price${prices.length > 1 ? "s" : ""} added`);
+    });
     $("#see-cfg")?.addEventListener("click", () => showFamily(entry.family, entry.ref));
     $$(".item[data-comp]", out).forEach((b) => b.addEventListener("click", () => editComp(db.comps.find((c) => c.id === b.dataset.comp))));
+  }
+
+  function drawPlan(target) {
+    const box = $("#plan");
+    if (!box) return;
+    const bm = bestMedian(target);
+    const mb = bm && maxBuy(bm.m.median);
+    const p = buyPlan();
+    box.innerHTML = `
+      <h3 style="margin:0 0 8px">What to pay</h3>
+      ${mb ? `<div class="plan-out">
+          <div><div class="label">Max buy price</div><div class="plan-max">${money0(mb.max)}</div></div>
+          <div class="muted">Based on ${bm.days}-day median sold <strong>${money0(bm.m.median)}</strong> (${bm.m.soldCount} sale${bm.m.soldCount > 1 ? "s" : ""}). Break-even ${money0(mb.breakEven)}.</div>
+        </div>` : `<p class="muted" style="margin:0 0 8px">Add a few sold prices below to see the most you should pay.</p>`}
+      <div class="grid3" style="margin-top:10px">
+        <label>Selling fees %<input data-plan="planFeePct" inputmode="decimal" value="${p.fee || ""}" placeholder="0"></label>
+        <label>Shipping &amp; other $<input data-plan="planShip" inputmode="decimal" value="${p.ship || ""}" placeholder="0"></label>
+        <label>Target profit $<input data-plan="planProfit" inputmode="decimal" value="${p.profit || ""}" placeholder="0"></label>
+      </div>`;
+    $$("[data-plan]", box).forEach((inp) => inp.addEventListener("change", () => { db.settings[inp.dataset.plan] = inp.value; save(); drawPlan(target); }));
   }
 
   function showFamily(fam, highlightRef) {
@@ -1482,15 +1561,15 @@
   function editComp(c = {}) {
     const isNew = !c.id;
     openSheet(isNew ? "Log a market comp" : "Edit comp", `
-      <form class="form" id="cform" autocomplete="off">
+      <form class="form" id="cform" autocomplete="off" novalidate>
         <div class="chips" role="radiogroup" aria-label="Type">
           <button type="button" class="chip" data-kind="sold" aria-pressed="${c.kind !== "asking"}">Sold price</button>
           <button type="button" class="chip" data-kind="asking" aria-pressed="${c.kind === "asking"}">Asking price</button>
         </div>
         <div class="note" id="kind-note"></div>
         <div class="grid2">
-          <label>Reference<input name="ref" list="dl-cref" value="${esc(c.ref)}" required></label>
-          <label>Price<input name="price" inputmode="decimal" value="${esc(c.price ?? "")}" required></label>
+          <label>Reference<input name="ref" list="dl-cref" value="${esc(c.ref)}"></label>
+          <label>Price<input name="price" inputmode="decimal" value="${esc(c.price ?? "")}"></label>
         </div>
         <div class="grid2">
           <label>Brand<input name="brand" list="dl-cbrand" value="${esc(c.brand)}"></label>
@@ -1533,8 +1612,8 @@
         if (!f.brand.value && known.brand) f.brand.value = known.brand;
         if (!f.model.value && known.model) f.model.value = known.model;
       });
-      $("#c-del", root)?.addEventListener("click", () => {
-        if (!confirm("Delete this comp?")) return;
+      $("#c-del", root)?.addEventListener("click", async () => {
+        if (!(await ask("Delete this comp?", { ok: "Delete", danger: true }))) return;
         db.comps = db.comps.filter((x) => x.id !== c.id);
         save(); closeSheet(); render(); toast("Comp deleted");
       });
@@ -1567,7 +1646,7 @@
     view.innerHTML = `
       <div class="eyebrow">Business</div><h1>Your business</h1>
 
-      <form class="section card form" id="biz" autocomplete="off">
+      <form class="section card form" id="biz" autocomplete="off" novalidate>
         <h3>Business details — printed on every document</h3>
         <div class="logo-row">
           <div class="logo-box" id="logo-box"><img src="${b.logo || "logo-ink.png"}" alt="Logo"></div>
@@ -1674,7 +1753,9 @@
       try {
         const data = JSON.parse(await file.text());
         if (!Array.isArray(data.watches)) throw new Error("bad");
-        const replace = confirm(`Backup has ${data.watches.length} watches, ${(data.comps || []).length} comps, ${(data.photos || []).length} photos and ${(data.videos || []).length} videos.\n\nOK = replace everything on this device\nCancel = merge into existing data`);
+        const choice = await ask(`Backup has ${data.watches.length} watches, ${(data.comps || []).length} comps, ${(data.photos || []).length} photos and ${(data.videos || []).length} videos.`, { buttons: [{ label: "Cancel", value: null }, { label: "Add to my data", value: "merge" }, { label: "Replace everything", value: "replace", kind: "primary" }] });
+        if (!choice) return;
+        const replace = choice === "replace";
         if (replace) {
           db = { ...blank(), watches: data.watches, comps: data.comps || [], refLooks: data.refLooks || {}, business: data.business || {}, settings: { ...blank().settings, ...(data.settings || {}) } };
           try { await mediaDB.clear(); } catch {}
@@ -1701,13 +1782,12 @@
     $("#cur").addEventListener("change", (e) => { db.settings.currency = e.target.value; save(); setFormats(); toast("Currency updated"); });
     $("#theme").addEventListener("change", (e) => { db.settings.theme = e.target.value; save(); applyTheme(); });
     $("#inv-next").addEventListener("change", (e) => { const n = parseInt(e.target.value, 10); if (n > 0) { db.settings.nextInvoice = n; save(); toast("Invoice numbering updated"); } });
-    $("#demo").addEventListener("click", () => {
-      if (db.watches.length && !confirm("Add sample data alongside your existing data?")) return;
+    $("#demo").addEventListener("click", async () => {
+      if (db.watches.length && !(await ask("Add sample data alongside your existing data?", { ok: "Add sample data" }))) return;
       loadDemo(); save(); toast("Sample data loaded"); location.hash = "#inventory";
     });
     $("#wipe").addEventListener("click", async () => {
-      if (!confirm("Erase ALL watches, comps, photos and videos on this device? Export a backup first if you need one.")) return;
-      if (!confirm("Are you sure? This cannot be undone.")) return;
+      if (!(await ask("Erase ALL watches, comps, photos and videos on this device? This cannot be undone — export a backup first if you need one.", { ok: "Erase everything", danger: true }))) return;
       db = { ...blank(), business: db.business, settings: db.settings };
       try { await mediaDB.clear(); } catch {}
       media.clear();
@@ -1761,7 +1841,7 @@
   const blobToDataURL = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
   async function copyText(text) {
     try { await navigator.clipboard.writeText(text); toast("Copied to clipboard"); }
-    catch { prompt("Copy this:", text); }
+    catch { await ask(text, { buttons: [{ label: "Close", value: true }] }); }
   }
 
   /* ---------- Sample data ---------- */

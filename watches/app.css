@@ -568,3 +568,21 @@ dialog.dragging .drop-hint, dialog.dragging .drop-zone { display: block; border-
 @media (min-width: 860px) { .brand-logo { height: 48px; } .tabs { top: 69px; } }
 .ph-mono { border-color: color-mix(in srgb, var(--text) 25%, transparent); color: var(--text); }
 .ph-sm span { color: var(--text); }
+
+/* ---------- In-app confirm & toast actions ---------- */
+dialog.ask { width: min(380px, calc(100% - 32px)); margin: auto; border-radius: 18px; padding: 0; background: var(--surface); color: var(--text); box-shadow: var(--shadow-lift); }
+.ask-box { padding: 18px; }
+.ask-box p { margin: 0 0 16px; font-size: 15px; line-height: 1.45; }
+.ask-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.btn.danger-fill { background: var(--bad); border-color: var(--bad); color: #fff; }
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast button { border: 0; background: transparent; color: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 4px 2px; }
+.toast.has-action { pointer-events: auto; }
+.vid-label { color: #aab0b8; font-size: 13px; font-weight: 600; }
+.hero-thumb.video { background: linear-gradient(145deg, #2c2f35, #0f1012); }
+
+/* ---------- What to pay ---------- */
+.plan-out { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.plan-out .label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.plan-max { font: 600 34px/1.1 var(--serif); }
+.plan-out .muted { flex: 1 1 200px; font-size: 13px; }
