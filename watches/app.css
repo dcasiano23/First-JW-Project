@@ -518,3 +518,16 @@ dialog::backdrop { background: rgba(8, 12, 16, 0.55); backdrop-filter: blur(2px)
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
 }
+
+/* ---------- Real (reference) photos ---------- */
+.pic.ref-photo { object-fit: cover; }
+.hero-main { position: relative; }
+.hero-tag { position: absolute; left: 8px; bottom: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; color: #fff; background: rgba(0, 0, 0, 0.5); padding: 3px 8px; border-radius: 999px; }
+.realpics-wrap summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; }
+.realpics-wrap summary::-webkit-details-marker { display: none; }
+.realpics-wrap summary::after { content: "▾"; color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.realpics-wrap[open] summary::after { content: "▴"; }
+.realpics { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+.rp-mini { display: flex; justify-content: center; gap: 10px; margin-top: 6px; font-size: 12px; font-weight: 600; }
+.rp-mini a, .rp-mini label { color: var(--brass); cursor: pointer; display: inline; font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
+.hero-main > .pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }

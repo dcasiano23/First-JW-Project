@@ -1,5 +1,5 @@
 // Keeps Watch Ledger working offline. Bump VERSION after changing any file.
-const VERSION = "watch-ledger-v2";
+const VERSION = "watch-ledger-v3";
 const FILES = ["./", "index.html", "app.css", "app.js", "catalog.js", "art.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", (e) => {

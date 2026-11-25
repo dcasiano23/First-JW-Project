@@ -158,11 +158,98 @@
   }
   const lookOf = (w) => CAT.resolve(w, db.refLooks);
   const configText = (w) => CAT.describe(lookOf(w).spec);
+  /* Reference photos: one real photo per reference + configuration, saved by you, shown on every matching watch. */
+  const refKey = (ref, spec) => `ref:${normRef(ref)}|${spec.dial}|${spec.strap}`;
+  const refPhoto = (ref, spec) => (normRef(ref) ? thumbs.get(refKey(ref, spec))?.[0] : null);
+  function imgFor(ref, spec, alt = "") {
+    const rp = refPhoto(ref, spec);
+    return rp
+      ? `<img class="pic photo ref-photo" src="${rp.thumb}" alt="Reference photo ${esc(alt)}" loading="lazy">`
+      : `<img class="pic art" src="${artURL(spec)}" alt="Illustration ${esc(alt)}" loading="lazy">`;
+  }
   function pictureHTML(w, { photo = true, cls = "" } = {}) {
     const ph = photo && w.id && thumbs.get(w.id)?.[0];
     if (ph) return `<img class="pic photo ${cls}" src="${ph.thumb}" alt="Photo of ${esc(label(w))}" loading="lazy">`;
-    return `<img class="pic art ${cls}" src="${artURL(lookOf(w).spec)}" alt="Illustration of ${esc(label(w))}: ${esc(configText(w))}" loading="lazy">`;
+    return imgFor(w.ref, lookOf(w).spec, `of ${label(w)}: ${configText(w)}`);
   }
+
+  /* Links that open real photos of the exact reference (and configuration, when one reference has several). */
+  const BRAND_SITES = { rolex: "rolex.com", omega: "omegawatches.com", tudor: "tudorwatch.com", cartier: "cartier.com", "grand seiko": "grand-seiko.com", seiko: "seikowatches.com", "audemars piguet": "audemars-piguet.com", "patek philippe": "patek.com", breitling: "breitling.com", "tag heuer": "tagheuer.com", iwc: "iwc.com", panerai: "panerai.com", "jaeger-lecoultre": "jaeger-lecoultre.com", longines: "longines.com", tissot: "tissotwatches.com", hublot: "hublot.com", "vacheron constantin": "vacheron-constantin.com", zenith: "zenith-watches.com" };
+  function photoQuery(brand, ref, spec) {
+    const entry = CAT.find(ref);
+    const multi = !entry || CAT.configurations(entry).length > 1;
+    const cfg = multi ? ` ${CAT.DIALS[spec.dial]?.label || ""} ${(CAT.STRAPS[spec.strap]?.label || "").replace(/ \(.*\)/, "")}` : "";
+    return `${brand || ""} ${ref}${cfg}`.replace(/\s+/g, " ").trim();
+  }
+  function photoLinks(brand, ref, spec) {
+    const q = photoQuery(brand, ref, spec);
+    const site = BRAND_SITES[fold(brand).trim()];
+    const img = (query) => `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`;
+    return `<a class="btn small" target="_blank" rel="noopener" href="${img(q)}">Google Images</a>` +
+      (site ? `<a class="btn small" target="_blank" rel="noopener" href="${img(`${ref} site:${site}`)}">Official ${esc(brand)} photos</a>` : "") +
+      `<a class="btn small" target="_blank" rel="noopener" href="https://www.chrono24.com/search/index.htm?query=${encodeURIComponent(ref)}">Dealer listing photos</a>`;
+  }
+  /* Find + save controls for one reference/configuration. */
+  function refPhotoTools(brand, ref, spec, { compact = false } = {}) {
+    if (!normRef(ref)) return "";
+    const key = refKey(ref, spec);
+    const has = !!thumbs.get(key)?.length;
+    if (compact) {
+      return `<div class="rp-mini" data-rp="${esc(key)}">
+        <a target="_blank" rel="noopener" href="https://www.google.com/search?tbm=isch&q=${encodeURIComponent(photoQuery(brand, ref, spec))}">Find photos</a>
+        <label>${has ? "Replace" : "Save photo"}<input type="file" accept="image/*" hidden data-rp-file></label>
+      </div>`;
+    }
+    return `<div class="realpics" data-rp="${esc(key)}">
+      <p class="muted" style="margin:0 0 8px">Search: <strong>${esc(photoQuery(brand, ref, spec))}</strong>. Open a photo you like, save or copy it, then add it here. It becomes the picture for every ${esc(ref)} in this configuration.</p>
+      <div class="links">${photoLinks(brand, ref, spec)}</div>
+      <div class="row-actions" style="margin-top:8px">
+        <label class="btn small primary">${has ? "Replace reference photo" : "Save reference photo"}<input type="file" accept="image/*" hidden data-rp-file></label>
+        <button type="button" class="btn small" data-rp-paste>Paste copied image</button>
+        ${has ? `<button type="button" class="btn small danger" data-rp-remove>Remove</button>` : ""}
+      </div>
+    </div>`;
+  }
+  async function setRefPhoto(key, blob) {
+    for (const old of thumbs.get(key) || []) await removePhoto(key, old.id);
+    await addPhoto(key, blob);
+  }
+  function bindRefPhotoTools(root, after) {
+    $$("[data-rp]", root).forEach((box) => {
+      const key = box.dataset.rp;
+      const done = async (blob) => {
+        try { await setRefPhoto(key, blob); toast("Reference photo saved"); }
+        catch { toast("Couldn't save that image."); return; }
+        after();
+      };
+      $("[data-rp-file]", box)?.addEventListener("change", (e) => e.target.files[0] && done(e.target.files[0]));
+      $("[data-rp-paste]", box)?.addEventListener("click", async () => {
+        try {
+          for (const item of await navigator.clipboard.read()) {
+            const type = item.types.find((t) => t.startsWith("image/"));
+            if (type) return done(await item.getType(type));
+          }
+          toast("No image on the clipboard — copy an image first.");
+        } catch { toast("This browser can't read the clipboard here — save the image and use Save reference photo."); }
+      });
+      $("[data-rp-remove]", box)?.addEventListener("click", async () => {
+        if (!confirm("Remove this reference photo?")) return;
+        for (const old of thumbs.get(key) || []) await removePhoto(key, old.id);
+        after();
+      });
+    });
+  }
+  /* Pasting an image (Ctrl/Cmd+V) while a watch or reference is open saves it as the reference photo. */
+  document.addEventListener("paste", async (e) => {
+    if (!sheet.open && ui.tab !== "market") return;
+    const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith("image/"));
+    const box = (sheet.open ? $("#sheet-body") : view).querySelector(".realpics[data-rp]");
+    if (!file || !box || e.target.closest?.("input, textarea")) return;
+    e.preventDefault();
+    try { await setRefPhoto(box.dataset.rp, file); toast("Reference photo saved"); } catch { toast("Couldn't save that image."); return; }
+    render();
+    if (sheet.open && sheet.dataset.watch) showWatch(sheet.dataset.watch);
+  });
 
   /* ---------- Search ---------- */
 
@@ -259,6 +346,7 @@
     onReady && onReady($("#sheet-body"));
   }
   const closeSheet = () => sheet.open && sheet.close();
+  sheet.addEventListener("close", () => delete sheet.dataset.watch);
   sheet.addEventListener("click", (e) => {
     if (e.target === sheet || e.target.closest("[data-close]")) closeSheet();
   });
@@ -554,7 +642,7 @@
     const profits = h.sold.map(profit);
     if (!h.mine.length && !mk.soldCount && !mk.askingCount) return "";
     return `<div class="card refcard">
-      <img class="pic art" src="${artURL(lookOf(w).spec)}" alt="">
+      ${imgFor(w.ref, lookOf(w).spec)}
       <div>
         <h3>${esc(w.ref ? "Reference " + w.ref : label(w))} — your history</h3>
         <div class="compare">
@@ -572,18 +660,18 @@
     if (!entry) return "";
     const cfgs = CAT.configurations(entry);
     const fam = CAT.family(entry).filter((r) => r !== entry);
-    const tile = (s, title, sub, current, attrs = "") =>
-      `<div class="cfg ${current ? "current" : ""}" ${attrs}><img class="pic art" src="${artURL(s)}" alt="" loading="lazy"><div class="cfg-t">${esc(title)}</div><div class="cfg-s">${esc(sub)}</div>${current ? `<span class="badge stock">This watch</span>` : ""}</div>`;
+    const tile = (s, ref, title, sub, current, attrs = "") =>
+      `<div class="cfg ${current ? "current" : ""}" ${attrs}>${imgFor(ref, s)}<div class="cfg-t">${esc(title)}</div><div class="cfg-s">${esc(sub)}</div>${current ? `<span class="badge stock">This watch</span>` : ""}</div>`;
     let html = `<div class="section"><h3>${esc(entry.ref)} comes in ${cfgs.length === 1 ? "one configuration" : cfgs.length + " configurations"}</h3>
       <p class="note">${esc(entry.note)}</p>
       <div class="cfg-grid">${cfgs.map((c) => {
         const s = CAT.resolve({ ref: entry.ref, look: c }).spec;
-        return tile(s, CAT.DIALS[c.dial].label + " dial", CAT.STRAPS[c.strap].label, c.dial === spec.dial && c.strap === spec.strap);
+        return tile(s, entry.ref, CAT.DIALS[c.dial].label + " dial", CAT.STRAPS[c.strap].label, c.dial === spec.dial && c.strap === spec.strap);
       }).join("")}</div></div>`;
     if (fam.length) {
       html += `<div class="section"><h3>Related references</h3><div class="cfg-grid">${fam.map((r) => {
         const s = CAT.resolve({ ref: r.ref }).spec;
-        return tile(s, r.ref, CAT.describe(s), false, `data-ref="${esc(r.ref)}" role="button" tabindex="0"`);
+        return tile(s, r.ref, r.ref, CAT.describe(s), false, `data-ref="${esc(r.ref)}" role="button" tabindex="0"`);
       }).join("")}</div></div>`;
     }
     return html;
@@ -597,6 +685,11 @@
     const h = history(w, w.id);
     const mk = marketFor(w);
     const photos = thumbs.get(w.id) || [];
+    const rp = refPhoto(w.ref, spec);
+    sheet.dataset.watch = w.id;
+    const firstView = photos.length ? `<img class="pic photo" src="${photos[0].thumb}" alt="Photo">`
+      : rp ? `<img class="pic photo" src="${rp.thumb}" alt="Reference photo"><span class="hero-tag">Reference photo — not this exact watch</span>`
+      : `<img class="pic art" src="${artURL(spec)}" alt="Illustration: ${esc(CAT.describe(spec))}"><span class="hero-tag">Illustration</span>`;
     const pastRows = h.mine
       .sort((a, b) => (b.buyDate || "").localeCompare(a.buyDate || ""))
       .map((x) => `<tr><td><a href="#" data-open="${x.id}">${fmtDate(x.buyDate)}</a></td><td class="wrap">${esc(configText(x))}</td><td>${money0(costBasis(x))}</td><td>${isSold(x) ? money0(x.sellPrice) : "in stock"}</td><td>${isSold(x) ? signed(profit(x)) : "—"}</td></tr>`)
@@ -612,10 +705,11 @@
 
     openSheet(label(w), `
       <div class="hero">
-        <div class="hero-main" id="hero-main">${photos.length ? `<img class="pic photo" src="${photos[0].thumb}" alt="Photo">` : `<img class="pic art" src="${artURL(spec)}" alt="Illustration: ${esc(CAT.describe(spec))}">`}</div>
+        <div class="hero-main" id="hero-main">${firstView}</div>
         <div class="hero-strip">
           ${photos.map((ph, i) => `<button class="hero-thumb ${i === 0 ? "on" : ""}" data-photo="${ph.id}" aria-label="Photo ${i + 1}"><img src="${ph.thumb}" alt=""></button>`).join("")}
-          <button class="hero-thumb ${photos.length ? "" : "on"}" data-art aria-label="Illustration"><img src="${artURL(spec)}" alt=""></button>
+          ${rp ? `<button class="hero-thumb ${photos.length ? "" : "on"}" data-refphoto aria-label="Reference photo"><img src="${rp.thumb}" alt=""></button>` : ""}
+          <button class="hero-thumb ${photos.length || rp ? "" : "on"}" data-art aria-label="Illustration"><img src="${artURL(spec)}" alt=""></button>
           <label class="hero-thumb add" aria-label="Add photos"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><input type="file" accept="image/*" multiple hidden id="w-addphoto"></label>
         </div>
       </div>
@@ -628,6 +722,8 @@
       </div>
 
       ${warnings.length ? `<div class="warnbox"><strong>Check this watch</strong>${warnings.map((t) => `<p>${esc(t)}</p>`).join("")}</div>` : ""}
+
+      ${w.ref ? `<details class="section realpics-wrap" ${rp ? "" : "open"}><summary><h3 style="display:inline">Real photos of ${esc(w.ref)}${entry && CAT.configurations(entry).length > 1 ? " in this configuration" : ""}</h3></summary>${refPhotoTools(w.brand, w.ref, spec)}</details>` : ""}
 
       <div class="row-actions" style="margin:14px 0 16px">
         ${isSold(w) ? "" : `<button class="btn primary" id="w-sell">Mark sold</button>`}
@@ -687,8 +783,15 @@
       $("[data-art]", root).addEventListener("click", (e) => {
         $$(".hero-thumb", root).forEach((x) => x.classList.toggle("on", x === e.currentTarget));
         shownPhoto = null;
-        main.innerHTML = `<img class="pic art" src="${artURL(spec)}" alt="Illustration">`;
+        main.innerHTML = `<img class="pic art" src="${artURL(spec)}" alt="Illustration"><span class="hero-tag">Illustration</span>`;
       });
+      $("[data-refphoto]", root)?.addEventListener("click", async (e) => {
+        $$(".hero-thumb", root).forEach((x) => x.classList.toggle("on", x === e.currentTarget));
+        shownPhoto = null;
+        main.innerHTML = `<img class="pic photo" src="${rp.thumb}" alt="Reference photo"><span class="hero-tag">Reference photo — not this exact watch</span>`;
+        try { const full = await photoDB.get(rp.id); if (full) main.innerHTML = `<img class="pic photo" src="${full.data}" alt="Reference photo"><span class="hero-tag">Reference photo — not this exact watch</span>`; } catch {}
+      });
+      bindRefPhotoTools(root, () => { render(); showWatch(w.id); });
       $("#w-addphoto", root).addEventListener("change", async (e) => {
         const files = [...e.target.files];
         if (!files.length) return;
@@ -826,7 +929,9 @@
       function drawConfig() {
         const probe = { ref: f.ref.value, look };
         const { entry, spec, warnings } = CAT.resolve(probe, db.refLooks);
-        $("#cfg-preview", root).src = artURL(spec);
+        const rpp = refPhoto(f.ref.value, spec);
+        $("#cfg-preview", root).src = rpp ? rpp.thumb : artURL(spec);
+        $("#cfg-preview", root).className = rpp ? "pic photo" : "pic art";
         $("#cfg-preview", root).alt = "Illustration: " + CAT.describe(spec);
         $("#cfg-caption", root).textContent = CAT.describe(spec);
         const dials = entry && !showAll ? entry.options.dial : Object.keys(CAT.DIALS);
@@ -1018,7 +1123,7 @@
       out.innerHTML = `
         ${rows.length ? `<div class="section"><h3>References you track · last 180 days</h3><div class="list">${rows.map(({ c, m }) => `
           <button class="item" type="button" data-q="${esc(c.ref || label(c))}">
-            <div class="thumb"><img class="pic art" src="${artURL(lookOf(c).spec)}" alt="" loading="lazy"></div>
+            <div class="thumb">${imgFor(c.ref, lookOf(c).spec)}</div>
             <div class="item-main"><div class="title">${esc(label(c))}</div><div class="meta">${esc(c.ref || "")}</div>
               <div class="meta">${m.soldCount} sold${m.askingCount ? ` · asking ${money0(m.askingMedian)}` : ""}${m.median && m.askingMedian ? ` · asking is ${pct((m.askingMedian - m.median) / m.median)} above sold` : ""}</div></div>
             <div class="right"><div class="big">${money0(m.median)}</div><div class="meta">median sold</div></div>
@@ -1031,7 +1136,7 @@
             const fam = CAT.family(r);
             const s = CAT.resolve({ ref: r.ref }).spec;
             const n = fam.reduce((t, x) => t + CAT.configurations(x).length, 0);
-            return `<div class="cfg" data-guide="${esc(r.family)}" role="button" tabindex="0"><img class="pic art" src="${artURL(s)}" alt="" loading="lazy"><div class="cfg-t">${esc(r.brand)} ${esc(r.model.replace(/ \(.*\)$/, ""))}</div><div class="cfg-s">${fam.length} ref${fam.length > 1 ? "s" : ""} · ${n} configuration${n > 1 ? "s" : ""}</div></div>`;
+            return `<div class="cfg" data-guide="${esc(r.family)}" role="button" tabindex="0">${imgFor(r.ref, s)}<div class="cfg-t">${esc(r.brand)} ${esc(r.model.replace(/ \(.*\)$/, ""))}</div><div class="cfg-s">${fam.length} ref${fam.length > 1 ? "s" : ""} · ${n} configuration${n > 1 ? "s" : ""}</div></div>`;
           }).join("")}</div>
         </div>`;
       $$("[data-q]", out).forEach((a) => a.addEventListener("click", () => { ui.mq = a.dataset.q; $("#mq").value = ui.mq; drawMarket(); }));
@@ -1058,7 +1163,7 @@
     out.innerHTML = `
       <div class="section">
         ${exactRef ? `<div class="market-head">
-          <img class="pic art" src="${artURL(lookOf(target).spec)}" alt="">
+          ${imgFor(target.ref || q, lookOf(target).spec)}
           <div><div class="brand-line">${esc(target.brand || "")}</div><h2>${esc(target.model || "")} <span class="ref">${esc(target.ref || q)}</span></h2>
           ${entry ? `<p class="muted" style="margin:4px 0 0">${esc(entry.note)}</p>` : ""}
           ${entry ? `<button class="linkbtn" id="see-cfg">See every configuration</button>` : ""}</div>
@@ -1073,6 +1178,7 @@
           ${mineHist && mineHist.paid.length ? `<div class="note" style="margin-top:10px">You've paid ${mineHist.paid.map((x) => money0(num(x.buyPrice))).slice(0, 6).join(", ")}${mineHist.paid.length > 6 ? "…" : ""} for this reference (most recent first).</div>` : ""}`
         : `<h2>Comps matching “${esc(q)}”</h2>`}
       </div>
+      ${exactRef ? `<div class="section"><h3>Real photos</h3>${refPhotoTools(target.brand, target.ref || q, lookOf(target).spec)}</div>` : ""}
       <div class="section">
         <h3>Check real sold prices</h3>
         ${soldLinks(q)}
@@ -1084,6 +1190,7 @@
     `;
     $("#add-comp-2").addEventListener("click", () => editComp(target));
     $("#see-cfg")?.addEventListener("click", () => showFamily(entry.family, entry.ref));
+    bindRefPhotoTools(out, () => drawMarket());
     $$(".item[data-comp]", out).forEach((b) => b.addEventListener("click", () => editComp(db.comps.find((c) => c.id === b.dataset.comp))));
   }
 
@@ -1100,18 +1207,19 @@
           <div class="cfg-grid">${CAT.configurations(r).map((c) => {
             const s = CAT.resolve({ ref: r.ref, look: c }).spec;
             const owned = db.watches.filter((w) => !isSold(w) && normRef(w.ref) === normRef(r.ref) && lookOf(w).spec.dial === c.dial && lookOf(w).spec.strap === c.strap).length;
-            return `<div class="cfg"><img class="pic art" src="${artURL(s)}" alt="" loading="lazy"><div class="cfg-t">${esc(CAT.DIALS[c.dial].label)} dial</div><div class="cfg-s">${esc(CAT.STRAPS[c.strap].label)}</div>${owned ? `<span class="badge stock">${owned} in stock</span>` : ""}</div>`;
+            return `<div class="cfg">${imgFor(r.ref, s)}<div class="cfg-t">${esc(CAT.DIALS[c.dial].label)} dial</div><div class="cfg-s">${esc(CAT.STRAPS[c.strap].label)}</div>${owned ? `<span class="badge stock">${owned} in stock</span>` : ""}${refPhotoTools(r.brand, r.ref, s, { compact: true })}</div>`;
           }).join("")}</div>
         </div>`).join("")}
     `, (root) => {
       $$("[data-mq]", root).forEach((b) => b.addEventListener("click", () => goMarket(b.dataset.mq)));
-      root.querySelector(".hl")?.scrollIntoView({ block: "start" });
+      bindRefPhotoTools(root, () => { const y = sheet.scrollTop; render(); showFamily(fam); sheet.scrollTop = y; });
+      if (highlightRef) root.querySelector(".hl")?.scrollIntoView({ block: "start" });
     });
   }
 
   function compHTML(c) {
     return `<button class="item" type="button" data-comp="${c.id}">
-      <div class="thumb"><img class="pic art" src="${artURL(lookOf(c).spec)}" alt="" loading="lazy"></div>
+      <div class="thumb">${imgFor(c.ref, lookOf(c).spec)}</div>
       <div class="item-main"><div class="title">${esc(label(c))} ${esc(c.ref || "")}${c.kind === "asking" ? `<span class="badge asking">Asking</span>` : `<span class="badge sold">Sold</span>`}</div>
       <div class="meta">${[fmtDate(c.date), c.source, c.condition, c.set].filter(Boolean).map(esc).join(" · ")}</div>
       ${c.notes ? `<div class="meta">${esc(c.notes)}</div>` : ""}</div>
