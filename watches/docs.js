@@ -63,7 +63,7 @@ window.WatchDocs = (() => {
   function watchTable(c, { price, priceLabel } = {}) {
     const w = c.w;
     const rows = [
-      ["Brand", w.brand], ["Model", w.model], ["Reference", w.ref], ["Serial number", w.serial], ["Year", w.year],
+      ["Brand", w.brand], ["Model", w.model], ["Reference", w.ref], ["Case", w.caseInfo], ["Serial number", w.serial], ["Year", w.year],
       ["Dial", c.cfg.dial], ["Bracelet / strap", c.cfg.strap], ["Condition", w.condition], ["Box & papers", w.set],
     ];
     return `<table>${rows.map(([k, v]) => `<tr><th>${k}</th><td>${blank(v, 160)}</td></tr>`).join("")}
