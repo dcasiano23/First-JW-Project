@@ -258,10 +258,21 @@
     return w ? `<img class="pic photo" src="${photosFor(w.id)[0].thumb}" alt="" loading="lazy">` : placeholderHTML({ brand }, "sm");
   }
 
+  /* What a reference is: built-in list first, then anything you've entered before, then the brand from the reference's format. */
+  function refInfo(ref) {
+    const k = normRef(ref);
+    if (k.length < 4) return null;
+    const built = CAT.REFDB.lookup(ref);
+    if (built && built.how === "list") return built;
+    const mine = [...db.watches].reverse().find((x) => normRef(x.ref) === k && x.brand) || [...db.comps].reverse().find((c) => normRef(c.ref) === k && c.brand);
+    if (mine) return { brand: mine.brand, model: mine.model || "", caseInfo: mine.caseInfo || "", how: "mine", ref: mine.ref };
+    return built;
+  }
+
   /* ---------- Search ---------- */
 
   function haystack(w) {
-    return fold([w.brand, w.model, w.ref, w.serial, w.year, w.condition, w.set, w.buyFrom, w.soldVia, w.soldTo, w.buyerEmail, w.notes, configText(w), w.invoiceNo,
+    return fold([w.brand, w.model, w.ref, w.caseInfo, w.serial, w.year, w.condition, w.set, w.buyFrom, w.soldVia, w.soldTo, w.buyerEmail, w.notes, configText(w), w.invoiceNo,
       ...(w.checks || []).map((c) => c.tracking)].join(" ")) + " " + normRef(w.ref) + " " + normRef(w.serial);
   }
   function matches(hay, query) {
@@ -845,6 +856,7 @@
         <dl class="kv">
           <dt>Dial</dt><dd>${esc(CAT.DIALS[spec.dial]?.label || "—")}</dd>
           <dt>Bracelet / strap</dt><dd>${esc(CAT.STRAPS[spec.strap]?.label || "—")}</dd>
+          ${w.caseInfo ? `<dt>Case</dt><dd>${esc(w.caseInfo)}</dd>` : ""}
           <dt>Condition</dt><dd>${esc(w.condition || "—")}</dd>
           <dt>Box / papers</dt><dd>${esc(w.set || "—")}</dd>
           <dt>Bought</dt><dd>${fmtDate(w.buyDate) || "—"}${w.buyFrom ? " from " + esc(w.buyFrom) : ""}${w.buyPayment ? " · " + esc(w.buyPayment) : ""}</dd>
@@ -1146,7 +1158,11 @@
             <label>Reference<input name="ref" list="dl-ref" value="${esc(w.ref)}" placeholder="e.g. 126610LN"></label>
             <label>Brand<input name="brand" list="dl-brand" value="${esc(w.brand)}"></label>
           </div>
-          <label>Model<input name="model" list="dl-model" value="${esc(w.model)}"></label>
+          <div class="ref-status" id="ref-status" aria-live="polite"></div>
+          <div class="grid2 stack-sm">
+            <label>Model<input name="model" list="dl-model" value="${esc(w.model)}"></label>
+            <label>Case (size &amp; material)<input name="caseInfo" value="${esc(w.caseInfo)}" placeholder="e.g. 41 mm steel"></label>
+          </div>
           <div class="grid3">
             <label>Serial<input name="serial" value="${esc(w.serial)}"></label>
             <label>Year<input name="year" inputmode="numeric" value="${esc(w.year)}"></label>
@@ -1245,7 +1261,7 @@
         const straps = entry && !showAll ? entry.options.strap : Object.keys(CAT.STRAPS);
         let html = entry
           ? `<div class="note"><strong>${esc(entry.brand)} ${esc(entry.model)}</strong> — ${esc(entry.note)}</div>`
-          : `<div class="note">${f.ref.value.trim() ? "This reference isn't in the built-in list. Pick the dial and bracelet/strap — they'll be remembered for this reference." : "Type a reference to load the configurations it comes in."}</div>`;
+          : `<div class="note">${f.ref.value.trim() ? "Pick the dial and bracelet/strap this watch has — they'll be remembered for this reference." : "Type a reference to load the configurations it comes in."}</div>`;
         html += `<div class="pick-label">Dial${entry && dials.length === 1 && !showAll ? " · only one for this reference" : ""}</div><div class="swatches">${dials.map((k) => `<button type="button" class="swatch ${spec.dial === k ? "on" : ""}" data-dial="${k}" aria-pressed="${spec.dial === k}">${dialDot(k)}${esc(CAT.DIALS[k].label)}</button>`).join("")}</div>`;
         html += `<div class="pick-label">Bracelet / strap${entry && straps.length === 1 && !showAll ? " · only one for this reference" : ""}</div><div class="swatches">${straps.map((k) => `<button type="button" class="swatch ${spec.strap === k ? "on" : ""}" data-strap="${k}" aria-pressed="${spec.strap === k}">${esc(CAT.STRAPS[k].label)}</button>`).join("")}</div>`;
         if (entry) html += `<button type="button" class="linkbtn" id="cfg-all">${showAll ? "Only show this reference's configurations" : "Watch doesn't match? Show all dials & straps"}</button>`;
@@ -1257,15 +1273,27 @@
       }
 
       let lastRef = normRef(f.ref.value);
-      f.ref.addEventListener("change", () => {
+      const filled = {}; // values this form filled in itself, so a new reference can replace them
+      function applyRef() {
         if (normRef(f.ref.value) === lastRef) return;
         lastRef = normRef(f.ref.value);
-        const entry = CAT.find(f.ref.value);
-        const known = entry || db.watches.find((x) => normRef(x.ref) === normRef(f.ref.value)) || db.comps.find((c) => normRef(c.ref) === normRef(f.ref.value));
-        if (known) {
-          if (!f.brand.value) f.brand.value = known.brand || "";
-          if (!f.model.value) f.model.value = known.model || "";
+        const info = refInfo(f.ref.value);
+        const st = $("#ref-status", root);
+        if (info) {
+          [["brand", info.brand], ["model", info.model], ["caseInfo", info.caseInfo]].forEach(([k, v]) => {
+            if (!v) return;
+            if (!f[k].value || f[k].value === filled[k]) { f[k].value = v; filled[k] = v; }
+          });
+          st.className = "ref-status " + (info.how === "pattern" ? "partial" : "ok");
+          st.textContent = info.how === "list" ? `✓ ${info.brand} ${info.model} — filled from the reference`
+            : info.how === "mine" ? `✓ ${info.brand} ${info.model} — filled from your past entries`
+            : `Brand recognised: ${info.brand}. Add the model once — it'll fill in automatically next time.`;
+        } else {
+          ["brand", "model", "caseInfo"].forEach((k) => { if (filled[k] && f[k].value === filled[k]) { f[k].value = ""; delete filled[k]; } });
+          st.className = "ref-status";
+          st.textContent = normRef(f.ref.value).length >= 4 ? "New reference — fill it in once and it'll fill in automatically next time." : "";
         }
+        const entry = CAT.find(f.ref.value);
         if (entry) {
           if (look.dial && !entry.options.dial.includes(look.dial)) delete look.dial;
           if (look.strap && !entry.options.strap.includes(look.strap)) delete look.strap;
@@ -1273,8 +1301,9 @@
         }
         drawConfig();
         updateHints();
-      });
-      f.ref.addEventListener("input", () => { if (CAT.find(f.ref.value)) f.ref.dispatchEvent(new Event("change")); });
+      }
+      f.ref.addEventListener("input", applyRef);
+      f.ref.addEventListener("change", applyRef);
       ["brand", "model", "buyPrice", "extraCosts", "sellPrice", "sellFees"].forEach((n) => f[n].addEventListener("input", updateHints));
 
       /* --- photos & videos --- */
@@ -1383,11 +1412,9 @@
   }
 
   function guessFromQuery(q) {
-    const r = normRef(q);
-    if (!r) return {};
-    const known = CAT.find(q) || db.comps.find((c) => normRef(c.ref) === r) || db.watches.find((w) => normRef(w.ref) === r);
-    if (known) return { brand: known.brand, model: known.model, ref: known.ref };
-    return { ref: q.trim() };
+    if (!normRef(q)) return {};
+    const info = refInfo(q);
+    return info ? { brand: info.brand, model: info.model, ref: info.ref || q.trim() } : { ref: q.trim() };
   }
 
   /* Only sources that show COMPLETED sales. Asking-price sites (Chrono24, dealer sites, eBay active listings) are not comps. */
@@ -1613,11 +1640,15 @@
       };
       setKind(kind);
       $$("[data-kind]", root).forEach((b) => b.addEventListener("click", () => setKind(b.dataset.kind)));
-      f.ref.addEventListener("change", () => {
-        const known = guessFromQuery(f.ref.value);
-        if (!f.brand.value && known.brand) f.brand.value = known.brand;
-        if (!f.model.value && known.model) f.model.value = known.model;
-      });
+      const cfilled = {};
+      const fillComp = () => {
+        const info = refInfo(f.ref.value);
+        [["brand", info?.brand], ["model", info?.model]].forEach(([k, v]) => {
+          if (v && (!f[k].value || f[k].value === cfilled[k])) { f[k].value = v; cfilled[k] = v; }
+        });
+      };
+      f.ref.addEventListener("input", fillComp);
+      f.ref.addEventListener("change", fillComp);
       $("#c-del", root)?.addEventListener("click", async () => {
         if (!(await ask("Delete this comp?", { ok: "Delete", danger: true }))) return;
         db.comps = db.comps.filter((x) => x.id !== c.id);
@@ -1814,12 +1845,12 @@
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
   function toCSV(list) {
-    const head = ["Brand", "Model", "Reference", "Dial", "Bracelet/strap", "Serial", "Year", "Condition", "Box/Papers", "Status", "Date bought", "Price paid", "Extra costs", "Cost basis", "Bought from", "Paid by", "Date sold", "Sold for", "Fees & shipping", "Net profit", "Days held", "Sold via", "Client", "Client email", "Client phone", "Client paid by", "Invoice", "Pre-ship check", "Tracking", "Config check", "Notes"];
+    const head = ["Brand", "Model", "Reference", "Case", "Dial", "Bracelet/strap", "Serial", "Year", "Condition", "Box/Papers", "Status", "Date bought", "Price paid", "Extra costs", "Cost basis", "Bought from", "Paid by", "Date sold", "Sold for", "Fees & shipping", "Net profit", "Days held", "Sold via", "Client", "Client email", "Client phone", "Client paid by", "Invoice", "Pre-ship check", "Tracking", "Config check", "Notes"];
     const rows = list.map((w) => {
       const { spec, warnings } = lookOf(w);
       const ck = lastLocked(w);
       return [
-        w.brand, w.model, w.ref, CAT.DIALS[spec.dial]?.label, CAT.STRAPS[spec.strap]?.label, w.serial, w.year, w.condition, w.set, isSold(w) ? "Sold" : "In stock",
+        w.brand, w.model, w.ref, w.caseInfo, CAT.DIALS[spec.dial]?.label, CAT.STRAPS[spec.strap]?.label, w.serial, w.year, w.condition, w.set, isSold(w) ? "Sold" : "In stock",
         w.buyDate, num(w.buyPrice), num(w.extraCosts), costBasis(w), w.buyFrom, w.buyPayment,
         w.sellDate, isSold(w) ? num(w.sellPrice) : "", isSold(w) ? num(w.sellFees) : "", isSold(w) ? profit(w) : "",
         isSold(w) ? daysBetween(w.buyDate, w.sellDate) ?? "" : "", w.soldVia, w.soldTo, w.buyerEmail, w.buyerPhone, w.sellPayment, w.invoiceNo,

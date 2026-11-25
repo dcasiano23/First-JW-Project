@@ -586,3 +586,19 @@ dialog.ask { width: min(380px, calc(100% - 32px)); margin: auto; border-radius: 
 .plan-out .label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
 .plan-max { font: 600 34px/1.1 var(--serif); }
 .plan-out .muted { flex: 1 1 200px; font-size: 13px; }
+
+/* reference lookup status */
+.ref-status { font-size: 13px; font-weight: 600; color: var(--muted); min-height: 0; }
+.ref-status:empty { display: none; }
+.ref-status.ok { color: var(--good); }
+.ref-status.partial { color: var(--warn); }
+
+/* configuration pickers */
+.config-pickers { display: grid; gap: 10px; min-width: 0; }
+.pick-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatch { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 6px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); }
+.swatch:not(:has(.dot)) { padding-left: 12px; }
+.swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--brass-soft); }
+
+@media (max-width: 520px) { .grid2.stack-sm { grid-template-columns: 1fr; } }

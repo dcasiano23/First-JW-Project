@@ -205,3 +205,189 @@ window.WatchCatalog = (() => {
 
   return { METALS, DIALS, STRAPS, BEZELS, SHAPES, REFS, find, family, resolve, configurations, describe, normRef, LOOK_KEYS };
 })();
+
+/* ---------- Reference database: reference → brand, model, case ---------- */
+/* Format: "REF|Brand|Model|Case". A trailing "+" on the ref means longer full references starting with it also match
+   (e.g. AP "15500ST" matches "15500ST.OO.1220ST.01", Patek "5711/1A" matches "5711/1A-010"). */
+window.WatchCatalog.REFDB = (() => {
+  const ROWS = `
+124060|Rolex|Submariner (no date)|41 mm Oystersteel
+126613LB|Rolex|Submariner Date|41 mm yellow Rolesor (steel & gold)
+126613LN|Rolex|Submariner Date|41 mm yellow Rolesor (steel & gold)
+126618LB|Rolex|Submariner Date|41 mm yellow gold
+126618LN|Rolex|Submariner Date|41 mm yellow gold
+126619LB|Rolex|Submariner Date|41 mm white gold
+116610LN|Rolex|Submariner Date|40 mm steel
+116610LV|Rolex|Submariner Date "Hulk"|40 mm steel
+114060|Rolex|Submariner (no date)|40 mm steel
+116613LB|Rolex|Submariner Date|40 mm yellow Rolesor (steel & gold)
+116618LB|Rolex|Submariner Date|40 mm yellow gold
+116619LB|Rolex|Submariner Date|40 mm white gold
+16610|Rolex|Submariner Date|40 mm steel
+16610LV|Rolex|Submariner Date "Kermit"|40 mm steel
+14060M|Rolex|Submariner (no date)|40 mm steel
+126710BLNR|Rolex|GMT-Master II "Batman"|40 mm Oystersteel
+126711CHNR|Rolex|GMT-Master II "Root Beer"|40 mm Everose Rolesor (steel & Everose gold)
+126715CHNR|Rolex|GMT-Master II|40 mm Everose gold
+126720VTNR|Rolex|GMT-Master II "Sprite" (left-hand crown)|40 mm Oystersteel
+126719BLRO|Rolex|GMT-Master II|40 mm white gold
+116710LN|Rolex|GMT-Master II|40 mm steel
+116710BLNR|Rolex|GMT-Master II "Batman"|40 mm steel
+16710|Rolex|GMT-Master II|40 mm steel
+116500LN|Rolex|Cosmograph Daytona|40 mm steel
+116520|Rolex|Cosmograph Daytona|40 mm steel
+126503|Rolex|Cosmograph Daytona|40 mm yellow Rolesor (steel & gold)
+126508|Rolex|Cosmograph Daytona|40 mm yellow gold
+126506|Rolex|Cosmograph Daytona|40 mm platinum
+126518LN|Rolex|Cosmograph Daytona|40 mm yellow gold, Oysterflex
+126519LN|Rolex|Cosmograph Daytona|40 mm white gold, Oysterflex
+126515LN|Rolex|Cosmograph Daytona|40 mm Everose gold, Oysterflex
+116508|Rolex|Cosmograph Daytona|40 mm yellow gold
+116518LN|Rolex|Cosmograph Daytona|40 mm yellow gold, Oysterflex
+116519LN|Rolex|Cosmograph Daytona|40 mm white gold, Oysterflex
+116515LN|Rolex|Cosmograph Daytona|40 mm Everose gold, Oysterflex
+116506|Rolex|Cosmograph Daytona|40 mm platinum
+126200|Rolex|Datejust 36|36 mm Oystersteel, smooth bezel
+126234|Rolex|Datejust 36|36 mm white Rolesor, fluted bezel
+126231|Rolex|Datejust 36|36 mm Everose Rolesor (steel & Everose gold)
+126233|Rolex|Datejust 36|36 mm yellow Rolesor (steel & gold)
+126331|Rolex|Datejust 41|41 mm Everose Rolesor (steel & Everose gold)
+126333|Rolex|Datejust 41|41 mm yellow Rolesor (steel & gold)
+116234|Rolex|Datejust 36|36 mm white Rolesor, fluted bezel
+116200|Rolex|Datejust 36|36 mm steel, smooth bezel
+278240|Rolex|Datejust 31|31 mm Oystersteel
+278274|Rolex|Datejust 31|31 mm white Rolesor, fluted bezel
+279174|Rolex|Lady-Datejust 28|28 mm white Rolesor, fluted bezel
+228238|Rolex|Day-Date 40|40 mm yellow gold
+228235|Rolex|Day-Date 40|40 mm Everose gold
+228239|Rolex|Day-Date 40|40 mm white gold
+228206|Rolex|Day-Date 40|40 mm platinum
+128238|Rolex|Day-Date 36|36 mm yellow gold
+128235|Rolex|Day-Date 36|36 mm Everose gold
+128239|Rolex|Day-Date 36|36 mm white gold
+118238|Rolex|Day-Date 36|36 mm yellow gold
+126600|Rolex|Sea-Dweller|43 mm Oystersteel
+126603|Rolex|Sea-Dweller|43 mm yellow Rolesor (steel & gold)
+126660|Rolex|Deepsea|44 mm Oystersteel
+136660|Rolex|Deepsea|44 mm Oystersteel
+116660|Rolex|Deepsea|44 mm steel
+224270|Rolex|Explorer 40|40 mm Oystersteel
+124273|Rolex|Explorer 36|36 mm yellow Rolesor (steel & gold)
+214270|Rolex|Explorer 39|39 mm steel
+114270|Rolex|Explorer|36 mm steel
+226570|Rolex|Explorer II|42 mm Oystersteel
+216570|Rolex|Explorer II|42 mm steel
+16570|Rolex|Explorer II|40 mm steel
+126900|Rolex|Air-King|40 mm Oystersteel
+116900|Rolex|Air-King|40 mm steel
+116400GV|Rolex|Milgauss|40 mm steel, green crystal
+326934|Rolex|Sky-Dweller|42 mm white Rolesor
+326933|Rolex|Sky-Dweller|42 mm yellow Rolesor (steel & gold)
+336934|Rolex|Sky-Dweller|42 mm white Rolesor
+336933|Rolex|Sky-Dweller|42 mm yellow Rolesor (steel & gold)
+326238|Rolex|Sky-Dweller|42 mm yellow gold
+126622|Rolex|Yacht-Master 40|40 mm Rolesium (steel & platinum)
+268622|Rolex|Yacht-Master 37|37 mm Rolesium (steel & platinum)
+126655|Rolex|Yacht-Master 40|40 mm Everose gold, Oysterflex
+226659|Rolex|Yacht-Master 42|42 mm white gold, Oysterflex
+226658|Rolex|Yacht-Master 42|42 mm yellow gold, Oysterflex
+226627|Rolex|Yacht-Master 42|42 mm RLX titanium
+116622|Rolex|Yacht-Master 40|40 mm Rolesium (steel & platinum)
+116680|Rolex|Yacht-Master II|44 mm steel
+116681|Rolex|Yacht-Master II|44 mm Everose Rolesor (steel & Everose gold)
+124300|Rolex|Oyster Perpetual 41|41 mm Oystersteel
+126000|Rolex|Oyster Perpetual 36|36 mm Oystersteel
+124200|Rolex|Oyster Perpetual 34|34 mm Oystersteel
+277200|Rolex|Oyster Perpetual 31|31 mm Oystersteel
+114300|Rolex|Oyster Perpetual 39|39 mm steel
+311.30.42.30.01.005|Omega|Speedmaster Professional Moonwatch|42 mm steel, Hesalite crystal
+311.30.42.30.01.006|Omega|Speedmaster Professional Moonwatch|42 mm steel, sapphire crystal
+220.10.41.21.03.001|Omega|Seamaster Aqua Terra 150M|41 mm steel
+220.10.41.21.01.001|Omega|Seamaster Aqua Terra 150M|41 mm steel
+215.30.44.21.01.001|Omega|Seamaster Planet Ocean 600M|43.5 mm steel
+234.30.41.21.01.001|Omega|Seamaster 300|41 mm steel
+220.10.40.20.01.001|Omega|Seamaster Railmaster|40 mm steel
+M79830RB-0001|Tudor|Black Bay GMT|41 mm steel
+M25600TN-0001|Tudor|Pelagos|42 mm titanium
+M25600TB-0001|Tudor|Pelagos|42 mm titanium
+M79470-0001|Tudor|Black Bay Pro|39 mm steel
+M79000N-0001|Tudor|Black Bay 54|37 mm steel
+M79010SG-0001|Tudor|Black Bay Fifty-Eight 925|39 mm silver
+SBGA413|Grand Seiko|Spring Drive "Shunbun"|40 mm titanium
+SBGW231|Grand Seiko|Elegance (manual wind)|37.3 mm steel
+SLGH005|Grand Seiko|Evolution 9 "White Birch"|40 mm steel
+15500ST+|Audemars Piguet|Royal Oak Selfwinding 41|41 mm steel
+15510ST+|Audemars Piguet|Royal Oak Selfwinding 41|41 mm steel
+15400ST+|Audemars Piguet|Royal Oak 41|41 mm steel
+15450ST+|Audemars Piguet|Royal Oak 37|37 mm steel
+15202ST+|Audemars Piguet|Royal Oak "Jumbo" Extra-Thin|39 mm steel
+16202ST+|Audemars Piguet|Royal Oak "Jumbo" Extra-Thin|39 mm steel
+26240ST+|Audemars Piguet|Royal Oak Chronograph 41|41 mm steel
+26331ST+|Audemars Piguet|Royal Oak Chronograph 41|41 mm steel
+26470ST+|Audemars Piguet|Royal Oak Offshore Chronograph 42|42 mm steel
+15710ST+|Audemars Piguet|Royal Oak Offshore Diver|42 mm steel
+5711/1A+|Patek Philippe|Nautilus|40 mm steel
+5712/1A+|Patek Philippe|Nautilus Moon Phase|40 mm steel
+5726/1A+|Patek Philippe|Nautilus Annual Calendar|40.5 mm steel
+5980/1A+|Patek Philippe|Nautilus Chronograph|40.5 mm steel
+5990/1A+|Patek Philippe|Nautilus Travel Time Chronograph|40.5 mm steel
+5811/1G+|Patek Philippe|Nautilus|41 mm white gold
+5167A+|Patek Philippe|Aquanaut|40 mm steel
+5164A+|Patek Philippe|Aquanaut Travel Time|40.8 mm steel
+5168G+|Patek Philippe|Aquanaut|42.2 mm white gold
+PAM00111|Panerai|Luminor Marina|44 mm steel
+PAM01312|Panerai|Luminor Marina|44 mm steel
+`;
+  const C = window.WatchCatalog;
+  const norm = C.normRef;
+  const rows = ROWS.trim().split("\n").map((line) => {
+    const [ref, brand, model, caseInfo] = line.split("|");
+    const prefix = ref.endsWith("+");
+    const clean = prefix ? ref.slice(0, -1) : ref;
+    return { ref: clean, key: norm(clean), prefix, brand, model, caseInfo };
+  });
+  const exact = new Map(rows.map((r) => [r.key, r]));
+  const prefixes = rows.filter((r) => r.prefix).sort((a, b) => b.key.length - a.key.length);
+
+  /* Brand from the shape of a reference, when the reference itself isn't listed. */
+  const PATTERNS = [
+    [/^M\d{5}[A-Z0-9]*-\d{4}$/i, "Tudor"],
+    [/^\d{3}\.\d{2}\.\d{2}\.\d{2}\.\d{2}\.\d{3}$/, "Omega"],
+    [/^\d{5}(ST|OR|BA|OP|CE|IP|TI|PT|SR|OK|NB)\b/i, "Audemars Piguet"],
+    [/^\d{4}\/\d{1,4}[A-Z]{1,2}/i, "Patek Philippe"],
+    [/^\d{4}[A-Z]{1,2}(-\d{3})?$/i, "Patek Philippe"],
+    [/^PAM\d{3,5}$/i, "Panerai"],
+    [/^IW\d{6}$/i, "IWC"],
+    [/^Q\d{7}$/i, "Jaeger-LeCoultre"],
+    [/^\d{4}V\/\d{3}[A-Z]/i, "Vacheron Constantin"],
+    [/^\d{3}\.[A-Z]{2}\.\d{4}\.[A-Z]{2}/i, "Hublot"],
+    [/^(CBN|CAR|CAZ|CBK|CBG|WAZ|WBP|WAY|WBN|WBE|CV2|CAW|WAR)\w{3,}/i, "TAG Heuer"],
+    [/^W[A-Z]{2,4}\d{4}$/i, "Cartier"],
+    [/^W\d{7}$/i, "Cartier"],
+    [/^S(BG|LG|BGW|BGA|BGH|BGE|BGJ|BGM|BGR|BGT|BGX|BGY|BGP|BGK|BGC|BGZ)[A-Z]?\d{3}$/i, "Grand Seiko"],
+    [/^S[A-Z]{2,3}\d{2,3}[A-Z]?\d?$/i, "Seiko"],
+    [/^[1-3]\d{5}[A-Z]{0,5}$/i, "Rolex"],
+    [/^1\d{4}[A-Z]{0,2}$/i, "Rolex"],
+  ];
+
+  function caseOf(entry) {
+    const b = entry.base || {};
+    const metal = C.METALS[b.metal]?.label.toLowerCase();
+    return [b.size && `${b.size} mm`, metal].filter(Boolean).join(" ");
+  }
+
+  /* Best match for a typed reference: { brand, model, caseInfo, how } or null. */
+  function lookup(ref) {
+    const k = norm(ref);
+    if (k.length < 4) return null;
+    const full = C.find(ref);
+    if (full) return { brand: full.brand, model: full.model, caseInfo: caseOf(full), how: "list", ref: full.ref };
+    const hit = exact.get(k) || prefixes.find((r) => k.startsWith(r.key));
+    if (hit) return { brand: hit.brand, model: hit.model, caseInfo: hit.caseInfo, how: "list", ref: hit.ref };
+    const t = String(ref).trim();
+    const p = PATTERNS.find(([re]) => re.test(t));
+    return p ? { brand: p[1], model: "", caseInfo: "", how: "pattern" } : null;
+  }
+
+  return { lookup, count: rows.length + C.REFS.length };
+})();
