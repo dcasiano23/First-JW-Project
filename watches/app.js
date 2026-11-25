@@ -1390,13 +1390,13 @@
     return { ref: q.trim() };
   }
 
+  /* Only sources that show COMPLETED sales. Asking-price sites (Chrono24, dealer sites, eBay active listings) are not comps. */
   function soldLinks(q, median) {
     const enc = encodeURIComponent(q);
     const floor = median ? `&_udlo=${Math.floor((median * 0.4) / 100) * 100}` : "";
     return `<div class="links">
       <a class="btn small primary" target="_blank" rel="noopener" href="https://www.ebay.com/sch/i.html?_nkw=${enc}&_sacat=31387&LH_Sold=1&LH_Complete=1&_sop=13${floor}">eBay — sold listings</a>
-      <a class="btn small" target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent(q + " sold price")}">Search "sold price"</a>
-      <a class="btn small" target="_blank" rel="noopener" href="https://www.chrono24.com/search/index.htm?query=${enc}">Chrono24 (asking prices)</a>
+      <a class="btn small" target="_blank" rel="noopener" href="https://130point.com/sales/">130point — real Best Offer prices</a>
     </div>`;
   }
 
@@ -1474,7 +1474,9 @@
       <div class="section">
         <h3>Check real sold prices</h3>
         ${soldLinks(q, (m90?.median || m180?.median))}
-        <p class="muted" style="font-size:12px;margin:6px 0 0">Opens eBay's completed sales for this reference, newest first, in the Wristwatches category${m180?.median ? ", hiding cheap results like straps and boxes" : ""}.</p>
+        <div class="note" style="margin-top:8px"><strong>Sold only.</strong> The eBay button shows completed sales for this reference, newest first, in Wristwatches${m180?.median ? ", hiding cheap results like straps and boxes" : ""}.
+          If a result says <strong>“Best offer accepted”</strong>, the crossed-out price is what the seller <em>asked</em>, not what it sold for — copy that listing's link into 130point to see the real price.
+          Chrono24 and dealer sites only show watches <em>for sale</em>, so they're not used for comps here.</div>
       </div>
       <form class="section card form" id="quick" autocomplete="off" novalidate>
         <h3 style="margin:0">Add the sold prices you just looked up</h3>
@@ -1556,7 +1558,8 @@
     </button>`;
   }
 
-  const SOURCES = ["eBay (sold)", "Chrono24 (sold)", "Forum / Reddit", "Instagram", "Auction house", "Dealer", "Private sale", "Other"];
+  const SOURCES = ["eBay (sold)", "eBay Best Offer (130point)", "Auction result (realized price)", "Forum / dealer group (sold)", "Private sale", "My own sale", "Other (sold)"];
+  const ASK_SOURCES = ["Chrono24 listing", "eBay active listing", "Dealer listing", "Instagram / forum listing", "Other listing"];
 
   function editComp(c = {}) {
     const isNew = !c.id;
@@ -1577,7 +1580,7 @@
         </div>
         <div class="grid2">
           <label>Date<input type="date" name="date" value="${esc(c.date || today())}"></label>
-          <label>Source<select name="source">${options(SOURCES, c.source)}</select></label>
+          <label>Source<select name="source" id="c-source"></select></label>
         </div>
         <div class="grid2">
           <label>Condition<select name="condition">${options(CONDITIONS, c.condition)}</select></label>
@@ -1603,7 +1606,10 @@
         $$("[data-kind]", root).forEach((b) => b.setAttribute("aria-pressed", b.dataset.kind === k));
         $("#kind-note", root).innerHTML = k === "sold"
           ? "<strong>Sold:</strong> a completed sale — eBay sold listing, auction result, a deal you saw close. This counts toward the market median."
-          : "<strong>Asking:</strong> a listing that hasn't sold. Kept for comparison only — it does <strong>not</strong> affect the market median.";
+          : "<strong>Asking:</strong> a listing that hasn't sold (Chrono24, dealer sites, active eBay listings). Kept for comparison only — it does <strong>not</strong> affect the market median.";
+        const sel = $("#c-source", root), cur = sel.value || c.source;
+        const list = k === "sold" ? SOURCES : ASK_SOURCES;
+        sel.innerHTML = options(list, list.includes(cur) ? cur : (c.kind === k || (!c.kind && k === "sold")) && cur ? cur : "");
       };
       setKind(kind);
       $$("[data-kind]", root).forEach((b) => b.addEventListener("click", () => setKind(b.dataset.kind)));
@@ -1877,19 +1883,19 @@
     const C = (brand, model, ref, ago, price, source, kind = "sold") => ({ id: uid(), brand, model, ref, date: d(ago), price, source, kind, condition: "Excellent", set: "Full set (box & papers)", link: "", notes: "Sample data" });
     db.comps.push(
       C("Rolex", "Submariner Date", "126610LN", 10, 13100, "eBay (sold)"),
-      C("Rolex", "Submariner Date", "126610LN", 25, 12950, "Forum / Reddit"),
+      C("Rolex", "Submariner Date", "126610LN", 25, 12950, "Forum / dealer group (sold)"),
       C("Rolex", "Submariner Date", "126610LN", 40, 13300, "eBay (sold)"),
-      C("Rolex", "Submariner Date", "126610LN", 61, 13050, "Auction house"),
-      C("Rolex", "Submariner Date", "126610LN", 5, 14500, "Dealer", "asking"),
-      C("Rolex", "Submariner Date", "126610LN", 9, 14900, "Dealer", "asking"),
+      C("Rolex", "Submariner Date", "126610LN", 61, 13050, "Auction result (realized price)"),
+      C("Rolex", "Submariner Date", "126610LN", 5, 14500, "Dealer listing", "asking"),
+      C("Rolex", "Submariner Date", "126610LN", 9, 14900, "Dealer listing", "asking"),
       C("Rolex", "GMT-Master II “Pepsi”", "126710BLRO", 18, 21200, "eBay (sold)"),
-      C("Rolex", "GMT-Master II “Pepsi”", "126710BLRO", 6, 23500, "Dealer", "asking"),
+      C("Rolex", "GMT-Master II “Pepsi”", "126710BLRO", 6, 23500, "Dealer listing", "asking"),
       C("Omega", "Speedmaster Moonwatch Professional", "310.30.42.50.01.001", 14, 5750, "eBay (sold)"),
       C("Omega", "Speedmaster Moonwatch Professional", "310.30.42.50.01.001", 30, 5600, "eBay (sold)"),
-      C("Omega", "Speedmaster Moonwatch Professional", "310.30.42.50.01.001", 7, 6600, "Dealer", "asking"),
-      C("Grand Seiko", "Snowflake", "SBGA211", 20, 4650, "Forum / Reddit"),
+      C("Omega", "Speedmaster Moonwatch Professional", "310.30.42.50.01.001", 7, 6600, "Dealer listing", "asking"),
+      C("Grand Seiko", "Snowflake", "SBGA211", 20, 4650, "Forum / dealer group (sold)"),
       C("Grand Seiko", "Snowflake", "SBGA211", 45, 4500, "eBay (sold)"),
-      C("Grand Seiko", "Snowflake", "SBGA211", 12, 5400, "Dealer", "asking"),
+      C("Grand Seiko", "Snowflake", "SBGA211", 12, 5400, "Dealer listing", "asking"),
     );
   }
 
